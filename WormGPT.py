@@ -37,71 +37,253 @@ flask_thread.daemon = True
 flask_thread.start()
 
 # باقي كود البوت يبقى كما هو...
-    import telebot,requests,re,html,tempfile,os;from bs4 import BeautifulSoup;from urllib.parse import urljoin   
-love=telebot.TeleBot("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4") # Token bot Telegram
-WormGPT="http://sii3.moayman.top/DARK/api/wormgpt.php?text=hello" # API WormGPT
-def ask_ai(text): 
-    try: return requests.post(WormGPT,data={"text":text}).json().get("response","Error")
-    except: return "Error"
-def markdown_to_html(text):
-    text=html.escape(text)
-    text=re.sub(r'```(.*?)```',r'<pre>\1</pre>',text,flags=re.DOTALL)
-    text=re.sub(r'`(.*?)`',r'<code>\1</code>',text)
-    text=re.sub(r'\*\*(.*?)\*\*',r'<b>\1</b>',text)
-    text=re.sub(r'\*(.*?)\*',r'<i>\1</i>',text)
-    text=re.sub(r'__(.*?)__',r'<u>\1</u>',text)
-    return text
-def darkai():
-    love.polling()
-def extract_image(url):
+import telebot
+import requests
+import sqlite3
+import os
+from datetime import datetime, timedelta
+
+# توكن البوت - سيتم تعيينه من متغير البيئة
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4')
+bot = telebot.TeleBot(BOT_TOKEN)
+
+# قائمة المشرفين - أنت المشرف الرئيسي
+ADMINS = [6521966233]  # تم إضافة أيديك الخاص كمشرف
+
+# تهيئة قاعدة البيانات
+def init_db():
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    
+    # جدول الأعضاء المحظورين
+    c.execute('''CREATE TABLE IF NOT EXISTS banned_users
+                 (user_id INTEGER PRIMARY KEY, 
+                  reason TEXT, 
+                  banned_at TIMESTAMP)''')
+    
+    # جدول المشتركين
+    c.execute('''CREATE TABLE IF NOT EXISTS subscribed_users
+                 (user_id INTEGER PRIMARY KEY,
+                  subscribed_at TIMESTAMP,
+                  expires_at TIMESTAMP)''')
+    
+    # جدول المشرفين الإضافيين
+    c.execute('''CREATE TABLE IF NOT EXISTS admins 
+                 (user_id INTEGER PRIMARY KEY)''')
+    
+    # إضافة الأيدي الخاص بك كمشرف إذا لم يكن مضافاً
+    c.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (6521966233,))
+    
+    conn.commit()
+    conn.close()
+
+# استدعاء التهيئة عند البدء
+init_db()
+
+# ========== دوال التحقق من الصلاحيات ========== #
+def is_admin(user_id):
+    """التحقق إذا كان المستخدم مشرفاً"""
+    if user_id in ADMINS:
+        return True
+    
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM admins WHERE user_id=?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    
+    return result is not None
+
+# ========== دوال الحظر ========== #
+def ban_user(user_id, reason="إساءة استخدام"):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO banned_users VALUES (?, ?, ?)",
+              (user_id, reason, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def unban_user(user_id):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM banned_users WHERE user_id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+def is_banned(user_id):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM banned_users WHERE user_id=?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    return result is not None
+
+# ========== دوال الاشتراك ========== #
+def add_subscription(user_id, days=30):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    subscribed_at = datetime.now()
+    expires_at = subscribed_at + timedelta(days=days)
+    c.execute("INSERT OR REPLACE INTO subscribed_users VALUES (?, ?, ?)",
+              (user_id, subscribed_at, expires_at))
+    conn.commit()
+    conn.close()
+
+def is_subscribed(user_id):
+    conn = sqlite3.connect('bot_data.db')
+    c = conn.cursor()
+    c.execute("SELECT expires_at FROM subscribed_users WHERE user_id=?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    
+    if result:
+        expires_at = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S.%f')
+        return datetime.now() < expires_at
+    return False
+
+# ========== أوامر البوت الأساسية ========== #
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    user_id = message.from_user.id
+    
+    if is_banned(user_id):
+        bot.reply_to(message, "❌ تم حظرك من استخدام البوت.")
+        return
+        
+    welcome_text = """
+    🌹 أهلاً وسهلاً بك!
+    
+    أنا بوت الذكاء الاصطناعي، يمكنك محاورتي في أي موضوع.
+    
+    📋 الأوامر المتاحة:
+    /help - عرض المساعدة
+    /mysub - التحقق من حالة الاشتراك
+    /subscribe - الاشتراك في البوت
+    """
+    
+    bot.reply_to(message, welcome_text)
+
+@bot.message_handler(commands=['help'])
+def show_help(message):
+    help_text = """
+    🆘 أوامر المساعدة:
+    
+    /start - بدء استخدام البوت
+    /help - عرض هذه المساعدة
+    /mysub - التحقق من حالة الاشتراك
+    /subscribe - الاشتراك في البوت
+    
+    للمشرفين فقط:
+    /ban - حظر مستخدم (بالرد على رسالته)
+    /unban - إلغاء حظر مستخدم
+    /addadmin - إضافة مشرف جديد
+    """
+    
+    bot.reply_to(message, help_text)
+
+@bot.message_handler(commands=['subscribe'])
+def subscribe_cmd(message):
+    user_id = message.from_user.id
+    add_subscription(user_id, 30)  # 30 يوم اشتراك
+    bot.reply_to(message, "✅ تم تفعيل اشتراكك لمدة 30 يوم!")
+
+@bot.message_handler(commands=['mysub'])
+def check_subscription(message):
+    user_id = message.from_user.id
+    
+    if is_subscribed(user_id):
+        bot.reply_to(message, "✅ اشتراكك مفعل ومازال صالحاً")
+    else:
+        bot.reply_to(message, "❌ ليس لديك اشتراك فعال. /subscribe")
+
+# ========== أوامر المشرفين ========== #
+@bot.message_handler(commands=['ban'])
+def ban_command(message):
+    user_id = message.from_user.id
+    
+    if not is_admin(user_id):
+        bot.reply_to(message, f"❌ ليس لديك صلاحية. رقمك: {user_id}")
+        return
+        
+    if message.reply_to_message:
+        target_id = message.reply_to_message.from_user.id
+        reason = message.text.split(' ', 1)[1] if len(message.text.split()) > 1 else "إساءة استخدام"
+        
+        ban_user(target_id, reason)
+        bot.reply_to(message, f"✅ تم حظر المستخدم {target_id}")
+    else:
+        bot.reply_to(message, "❌ يجب الرد على رسالة المستخدم لحظره.")
+
+@bot.message_handler(commands=['unban'])
+def unban_command(message):
+    user_id = message.from_user.id
+    
+    if not is_admin(user_id):
+        bot.reply_to(message, "❌ ليس لديك صلاحية لهذا الأمر.")
+        return
+        
     try:
-        if any(url.lower().endswith(ext) for ext in [".jpg",".jpeg",".png",".webp"]): return url
-        headers={"User-Agent":"Mozilla/5.0"}
-        resp=requests.get(url,headers=headers)
-        if resp.status_code!=200: return None
-        soup=BeautifulSoup(resp.text,"html.parser")
-        for tag in ["og:image","twitter:image"]:
-            img=soup.find("meta",property=tag)
-            if img and img.get("content"): return img["content"]
-        img_tag=soup.find("img")
-        if img_tag and img_tag.get("src"): return urljoin(url,img_tag["src"])
-    except: return None
-def extract_code_blocks(text): return re.findall(r'```(.*?)```',text,flags=re.DOTALL)
-def get_file_extension(code_snippet):
-    first_line=code_snippet.strip().splitlines()[0].lower()
-    if "python" in first_line: return ".py"
-    if "javascript" in first_line or "js" in first_line: return ".js"
-    if "java" in first_line: return ".java"
-    if "c++" in first_line or "cpp" in first_line: return ".cpp"
-    if "c#" in first_line or "csharp" in first_line: return ".cs"
-    if "php" in first_line: return ".php"
-    if "html" in first_line: return ".html"
-    return ".txt"
-def ask_for_filename(code_snippet):
+        target_id = int(message.text.split()[1])
+        unban_user(target_id)
+        bot.reply_to(message, f"✅ تم إلغاء حظر المستخدم {target_id}")
+    except:
+        bot.reply_to(message, "❌ استخدم: /unban <user_id>")
+
+@bot.message_handler(commands=['addadmin'])
+def add_admin_command(message):
+    user_id = message.from_user.id
+    
+    if not is_admin(user_id):
+        bot.reply_to(message, "❌ ليس لديك صلاحية لهذا الأمر.")
+        return
+        
     try:
-        prompt=f"Just give me a proper file name for this code without any extras:\n{code_snippet}"
-        filename=requests.post(WormGPT,data={"text":prompt}).json().get("response","code_file")
-        return re.sub(r'[^\w\- ]','',filename).strip()
-    except: return "code_file"
-@love.message_handler(commands=['start'])
-def start_message(message):
-    text="""<b>Hi im WormGPT 👋🏻</b>\n<b><blockquote>im an unfiltered artificial intelligence that can create any code you can think of</blockquote></b>\n<b><tg-spoiler><blockquote>The most powerful illegal artificial intelligence</blockquote></tg-spoiler></b>\n\n<b><u>im ready what do you want?</u></b>"""
-    img_url=extract_image("https://pin.it/1HLRK6sTC") # link image /start
-    if img_url: love.send_photo(message.chat.id,photo=img_url,caption=text,parse_mode="HTML",has_spoiler=True)
-    else: love.send_message(message.chat.id,text,parse_mode="HTML")
-@love.message_handler(func=lambda m:True)
-def chat(message):
-    reply=ask_ai(message.text)
-    if len(reply)>4000:
-        codes=extract_code_blocks(reply)
-        if codes:
-            code_snippet=codes[0]
-            filename=ask_for_filename(code_snippet)+get_file_extension(code_snippet)
-            temp_path=os.path.join(tempfile.gettempdir(),filename)
-            with open(temp_path,"w",encoding="utf-8") as f: f.write(code_snippet)
-            caption=(reply.replace(f"```{code_snippet}```","")[:1000]+"...") if len(reply)>1024 else reply.replace(f"```{code_snippet}```","")
-            love.send_document(message.chat.id,open(temp_path,"rb"),caption=caption or " ")
-            os.remove(temp_path)
-            return
-    love.send_message(message.chat.id,markdown_to_html(reply),parse_mode="HTML")
-darkai()
+        new_admin_id = int(message.text.split()[1])
+        
+        conn = sqlite3.connect('bot_data.db')
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_admin_id,))
+        conn.commit()
+        conn.close()
+        
+        bot.reply_to(message, f"✅ تم إضافة المشرف الجديد: {new_admin_id}")
+    except:
+        bot.reply_to(message, "❌ استخدم: /addadmin <user_id>")
+
+# ========== معالجة الرسائل العادية ========== #
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name
+    
+    # التحقق من الحظر
+    if is_banned(user_id):
+        bot.reply_to(message, "❌ تم حظرك من استخدام البوت.")
+        return
+        
+    # التحقق من الاشتراك
+    if not is_subscribed(user_id):
+        bot.reply_to(message, f"⚠️ عذراً {user_name},\nيجب الاشتراك لاستخدام البوت.\n\nاستخدم /subscribe للاشتراك")
+        return
+    
+    # إظهار حالة "يكتب..." للمستخدم
+    bot.send_chat_action(message.chat.id, 'typing')
+    
+    # معالجة الرسالة باستخدام الذكاء الاصطناعي
+    try:
+        txt = message.text
+        res = requests.get(f"http://sii3.moayman.top/DARK/api/wormgpt.php?text=hello{txt}", timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        response = data.get("response", "❌ لا يوجد رد من الخادم")
+        bot.reply_to(message, response)
+    except Exception as e:
+        print(f"Error: {e}")
+        bot.reply_to(message, "⚠️ عذراً، حدث خطأ في المعالجة")
+
+# ========== تشغيل البوت ========== #
+if __name__ == "__main__":
+    print("✅ البوت يعمل بنجاح!")
+    print("🤖 نظام الحظر والاشتراك مفعل")
+    print(f"👑 أنت المشرف الرئيسي: 6521966233")
+    bot.infinity_polling()
