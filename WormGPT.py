@@ -1,4 +1,10 @@
-import telebot,requests,re,html,tempfile,os;from bs4 import BeautifulSoup;from urllib.parse import urljoin   
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    import os
+    os.system("pip install beautifulsoup4")
+    from bs4 import BeautifulSoup
+    import telebot,requests,re,html,tempfile,os;from bs4 import BeautifulSoup;from urllib.parse import urljoin   
 love=telebot.TeleBot("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4") # Token bot Telegram
 WormGPT="http://sii3.moayman.top/DARK/api/wormgpt.php?text=hello" # API WormGPT
 def ask_ai(text): 
