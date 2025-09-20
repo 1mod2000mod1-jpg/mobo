@@ -1,9 +1,42 @@
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    import os
-    os.system("pip install beautifulsoup4")
-    from bs4 import BeautifulSoup
+import threading
+import requests
+import time
+
+# وظيفة إبقاء البوت نشطاً
+def keep_alive():
+    while True:
+        try:
+            # أرسل طلباً إلى الرابط الخاص بك على Render
+            requests.get("https://mobo.onrender.com", timeout=5)
+            print("✅ تم إرسال نبض حياة إلى Render")
+        except:
+            print("⚠️ فشل إرسال نبض حياة")
+        time.sleep(300)  # كل 5 دقائق
+
+# بدء وظيفة إبقاء البوت نشطاً
+heartbeat_thread = threading.Thread(target=keep_alive)
+heartbeat_thread.daemon = True
+heartbeat_thread.start()
+from flask import Flask
+import threading
+
+# إنشاء تطبيق Flask بسيط
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 البوت يعمل بشكل صحيح! ✅"
+
+# تشغيل Flask في thread منفصل
+def run_flask():
+    app.run(host='0.0.0.0', port=8000)
+
+# بدء Flask عندما يبدأ البوت
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.daemon = True
+flask_thread.start()
+
+# باقي كود البوت يبقى كما هو...
     import telebot,requests,re,html,tempfile,os;from bs4 import BeautifulSoup;from urllib.parse import urljoin   
 love=telebot.TeleBot("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4") # Token bot Telegram
 WormGPT="http://sii3.moayman.top/DARK/api/wormgpt.php?text=hello" # API WormGPT
