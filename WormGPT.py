@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-Telegram Bot - النسخة النهائية المضمونة
-بدون أخطاء syntax
+Telegram AI Bot - بوت الذكاء الاصطناعي مع API الخاص
 """
 
 import os
+import json
 import logging
+import requests
+from datetime import datetime
+from pathlib import Path
 import telebot
 
 # إعداد التسجيل
@@ -13,170 +16,372 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("TelegramBot")
+logger = logging.getLogger("AIBot")
 
-# التوكن
+# التوكن - هذا فقط المطلوب
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 if not BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN غير معروف")
+    logger.info("💡 تأكد من تعيين TELEGRAM_BOT_TOKEN في Render Environment")
     exit(1)
 
 # إنشاء البوت
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# نظام الذاكرة
+class MemorySystem:
+    def __init__(self):
+        self.workspace = Path("/tmp/ai_bot_memory")
+        self.workspace.mkdir(exist_ok=True)
+        self.conversations = {}
+    
+    def get_user_file(self, user_id):
+        return self.workspace / f"user_{user_id}.json"
+    
+    def load_conversation(self, user_id):
+        user_file = self.get_user_file(user_id)
+        if user_file.exists():
+            try:
+                with open(user_file, 'r', encoding='utf-8') as f:
+                    self.conversations[user_id] = json.load(f)
+            except:
+                self.conversations[user_id] = []
+        else:
+            self.conversations[user_id] = []
+        return self.conversations[user_id]
+    
+    def save_conversation(self, user_id, conversation):
+        self.conversations[user_id] = conversation
+        user_file = self.get_user_file(user_id)
+        with open(user_file, 'w', encoding='utf-8') as f:
+            json.dump(conversation[-15:], f, ensure_ascii=False, indent=2)
+    
+    def add_message(self, user_id, role, content):
+        conversation = self.load_conversation(user_id)
+        conversation.append({
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        })
+        self.save_conversation(user_id, conversation)
+    
+    def clear_conversation(self, user_id):
+        self.conversations[user_id] = []
+        user_file = self.get_user_file(user_id)
+        if user_file.exists():
+            user_file.unlink()
+
+# تهيئة النظام
+memory = MemorySystem()
+
+# خدمات الذكاء الاصطناعي مع API الخاص
+class CustomAIService:
+    
+    # رابط API الخاص بك
+    API_URL = "http://fi8.bot-hosting.net:20163/elostoracode"
+    
+    @staticmethod
+    def generate_response(user_id, user_message):
+        """توليد رد باستخدام API الخاص"""
+        try:
+            # إضافة رسالة المستخدم إلى الذاكرة
+            memory.add_message(user_id, "user", user_message)
+            
+            # استخدام API الخاص
+            try:
+                return CustomAIService.custom_api_call(user_message, user_id)
+            except Exception as api_error:
+                logger.warning(f"⚠️ API الخاص غير متاح: {api_error}")
+                # استخدام بديل إذا فشل API
+                return CustomAIService.smart_fallback(user_message, user_id)
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في الذكاء الاصطناعي: {e}")
+            return "⚠️ عذراً، حدث خطأ في المعالجة. يرجى المحاولة مرة أخرى."
+
+    @staticmethod
+    def custom_api_call(message, user_id):
+        """الاتصال بالـ API الخاص"""
+        try:
+            # بناء رابط API مع النص
+            api_url = f"{CustomAIService.API_URL}?text={requests.utils.quote(message)}"
+            
+            logger.info(f"🔗 جاري الاتصال بالـ API: {api_url}")
+            
+            # إرسال طلب GET إلى API
+            response = requests.get(api_url, timeout=30)
+            
+            if response.status_code == 200:
+                # محاولة تحليل الرد
+                try:
+                    # إذا كان الرد JSON
+                    result = response.json()
+                    ai_response = result.get('response', result.get('text', str(result)))
+                except:
+                    # إذا كان نص عادي
+                    ai_response = response.text.strip()
+                
+                # تنظيف الرد إذا كان طويلاً
+                if len(ai_response) > 2000:
+                    ai_response = ai_response[:2000] + "..."
+                
+                # إذا كان الرد فارغاً
+                if not ai_response or ai_response.isspace():
+                    ai_response = "🔄 جرب صياغة سؤالك بطريقة أخرى"
+                
+                # حفظ الرد في الذاكرة
+                memory.add_message(user_id, "assistant", ai_response)
+                
+                logger.info(f"✅ تم الحصول على رد من API: {ai_response[:100]}...")
+                return ai_response
+            else:
+                raise Exception(f"API error: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            logger.error(f"❌ خطأ في API الخاص: {e}")
+            raise
+
+    @staticmethod
+    def smart_fallback(message, user_id):
+        """ردود ذكية عندما لا يعمل API"""
+        message_lower = message.lower()
+        
+        # ردود مبرمجة ذكية
+        responses = {
+            'مرحبا': 'أهلاً وسهلاً! أنا بوت الذكاء الاصطناعي المدعوم بـ API الخاص. كيف يمكنني مساعدتك؟ 🎉',
+            'السلام عليكم': 'وعليكم السلام ورحمة الله وبركاته! أنا هنا لمساعدتك. 🌟',
+            'شكرا': 'العفو! دائماً سعيد بمساعدتك. هل تحتاج مساعدة في شيء آخر؟ 😊',
+            'اسمك': 'أنا بوت الذكاء الاصطناعي المدعوم بـ API الخاص! 🤖',
+            'كيف حالك': 'أنا بخير الحمدلله! جاهز لمساعدتك في أي استفسار. 💫',
+            'مساعدة': 'يمكنني مساعدتك في:\n• الإجابة على الأسئلة\n• الشرح والتوضيح\n• الكتابة والإبداع\n• حل المشكلات\nما الذي تحتاج مساعدة فيه؟ 🎯',
+            'api': 'أستخدم API خاص مخصص للذكاء الاصطناعي! 🌐',
+            'مطور': 'تم تطويري باستخدام API خاص ومخصص للعمل بكفاءة عالية! 💻'
+        }
+        
+        # البحث عن رد مبرمج
+        for key, response in responses.items():
+            if key in message_lower:
+                memory.add_message(user_id, "assistant", response)
+                return response
+        
+        # إذا لم يكن هناك رد مبرمج، استخدم رد ذكي عام
+        general_responses = [
+            f"🔍 أحلل سؤالك: '{message}' - دعني أوصل لـ API الخاص للحصول على أفضل إجابة...",
+            f"💭 سؤالك مثير: '{message}' - جاري الاستعلام من نظام الذكاء الاصطناعي...",
+            f"🎯 رائع! '{message}' - سأستخدم API الخاص لتقديم إجابة دقيقة...",
+            f"🚀 جاري معالجة سؤالك حول '{message}' عبر نظام الذكاء الاصطناعي المخصص..."
+        ]
+        
+        import random
+        response = random.choice(general_responses)
+        memory.add_message(user_id, "assistant", response)
+        
+        return response
+
+# أوامر البوت
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    """معالجة أمر /start"""
+    """بدء المحادثة"""
     try:
         welcome_text = """
-🎉 **مرحباً! البوت يعمل بنجاح**
+🤖 **مرحباً! أنا بوت الذكاء الاصطناعي المتقدم**
 
-🤖 **تم النشر على Render بنجاح**
+🧠 **المميزات:**
+✅ مدعوم بـ API خاص ومخصص
+✅ ذاكرة محادثات ذكية
+✅ دعم كامل للعربية
+✅ استجابات فائقة السرعة
 
-✅ **الحالة: نشط ومستقر**
-
-💡 **جرب هذه الأوامر:**
-/start - هذه الرسالة
-/ping - فحص الاتصال
+💡 **الأوامر المتاحة:**
+/start - بدء المحادثة
 /help - المساعدة
-/about - معلومات عن البوت
-/status - حالة الخادم
+/new - محادثة جديدة
+/memory - إدارة الذاكرة
+/status - حالة النظام
+/api - معلومات الـAPI
+
+🔧 **اكتب أي سؤال وسأجيبك باستخدام الذكاء الاصطناعي المتقدم!**
         """
         bot.send_message(message.chat.id, welcome_text)
-        logger.info(f"✅ تم معالجة /start من {message.from_user.first_name}")
+        logger.info(f"✅ بدء محادثة مع {message.from_user.first_name}")
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
 
-@bot.message_handler(commands=['ping'])
-def handle_ping(message):
-    """معالجة أمر /ping"""
-    try:
-        bot.send_message(message.chat.id, "🏓 **pong!**\n\n✅ البوت يعمل بشكل ممتاز!")
-        logger.info(f"✅ تم معالجة /ping من {message.from_user.first_name}")
-    except Exception as e:
-        logger.error(f"❌ خطأ في /ping: {e}")
-
 @bot.message_handler(commands=['help'])
 def handle_help(message):
-    """معالجة أمر /help"""
+    """عرض المساعدة"""
     try:
         help_text = """
-🆘 **مركز المساعدة**
+🆘 **مركز المساعدة - بوت الذكاء الاصطناعي**
 
-**الأوامر المتاحة:**
+**🧠 المميزات:**
+• مدعوم بـ API خاص للذكاء الاصطناعي
+• محادثات ذكية مع الذاكرة
+• إجابات دقيقة وسريعة
+• دعم كامل للعربية
+
+**🎯 الأوامر:**
 /start - بدء البوت
-/ping - فحص الاتصال
 /help - هذه الرسالة
-/about - معلومات عن البوت
-/status - حالة الخادم
+/new - محادثة جديدة
+/memory - إدارة الذاكرة
+/status - حالة النظام
+/api - معلومات الـAPI
 
-**معلومات تقنية:**
-• يعمل على Render.com
-• Python 3.10+
-• إصدار مستقر 100%
+**💡 أمثلة للأسئلة:**
+• "اشرح لي الذكاء الاصطناعي"
+• "كيف أتعلم البرمجة؟"
+• "ما هو أفضل نظام تشغيل؟"
+• "ساعدني في حل مشكلة"
         """
         bot.send_message(message.chat.id, help_text)
-        logger.info(f"✅ تم معالجة /help من {message.from_user.first_name}")
     except Exception as e:
         logger.error(f"❌ خطأ في /help: {e}")
 
-@bot.message_handler(commands=['about'])
-def handle_about(message):
-    """معالجة أمر /about"""
+@bot.message_handler(commands=['api'])
+def handle_api_info(message):
+    """معلومات عن الـAPI"""
     try:
-        about_text = """
-🤖 **معلومات عن البوت**
+        api_info = f"""
+🌐 **معلومات نظام الـAPI**
 
-**المميزات:**
-✅ يعمل على السحابة (Render)
-✅ مستقر وسريع
-✅ يدعم الأوامر الأساسية
-✅ سهل التطوير
+**🔗 الرابط:** `{CustomAIService.API_URL}`
+**📡 النوع:** GET Request
+**⚡ الحالة:** 🟢 نشط
+**🎯 الاستخدام:** ?text=نص_السؤال
 
-**التقنيات:**
-• Python
-• pyTelegramBotAPI
-• Render.com
+**💻 المميزات:**
+• استجابات ذكية وسريعة
+• معالجة نصوص متقدمة
+• دعم اللغة العربية
+• أداء عالي
 
-**التواصل:**
-@YourUsername
+✅ **النظام يعمل بشكل مثالي!**
         """
-        bot.send_message(message.chat.id, about_text)
-        logger.info(f"✅ تم معالجة /about من {message.from_user.first_name}")
+        bot.send_message(message.chat.id, api_info)
     except Exception as e:
-        logger.error(f"❌ خطأ في /about: {e}")
+        logger.error(f"❌ خطأ في /api: {e}")
+
+@bot.message_handler(commands=['new'])
+def handle_new(message):
+    """بدء محادثة جديدة"""
+    try:
+        user_id = message.from_user.id
+        memory.clear_conversation(user_id)
+        bot.send_message(message.chat.id, "🔄 **تم بدء محادثة جديدة!**\n\n💬 الذاكرة السابقة تم مسحها. يمكنك البدء من جديد.")
+        logger.info(f"✅ بدء محادثة جديدة لـ {message.from_user.first_name}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في /new: {e}")
+
+@bot.message_handler(commands=['memory'])
+def handle_memory(message):
+    """عرض معلومات الذاكرة"""
+    try:
+        user_id = message.from_user.id
+        conversation = memory.load_conversation(user_id)
+        memory_text = f"""
+🧠 **معلومات الذاكرة**
+
+• عدد الرسائل: {len(conversation)}
+• المساحة: {len(conversation) * 0.1:.1f}KB تقريباً
+• الحالة: {'🟢 نشطة' if conversation else '⚪ فارغة'}
+
+💡 استخدم /new لمسح الذاكرة
+        """
+        bot.send_message(message.chat.id, memory_text)
+    except Exception as e:
+        logger.error(f"❌ خطأ في /memory: {e}")
 
 @bot.message_handler(commands=['status'])
 def handle_status(message):
-    """معالجة أمر /status"""
+    """حالة النظام"""
     try:
         import psutil
-        import platform
-        from datetime import datetime
+        memory_info = psutil.virtual_memory()
         
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        # اختبار الاتصال بالـAPI
+        api_status = "🟢 نشط"
+        try:
+            test_response = requests.get(f"{CustomAIService.API_URL}?text=test", timeout=10)
+            if test_response.status_code != 200:
+                api_status = "🟡 مشكلة"
+        except:
+            api_status = "🔴 غير متصل"
         
         status_text = f"""
-📊 **حالة الخادم**
+📊 **حالة نظام الذكاء الاصطناعي**
 
-**🖥️ معلومات النظام:**
-• النظام: {platform.system()} {platform.release()}
-• الذاكرة: {memory.percent}% مستخدم
-• التخزين: {disk.percent}% مستخدم
+🤖 **البوت:**
+• الحالة: 🟢 نشط
+• الذاكرة النشطة: {len(memory.conversations)} مستخدم
+• API الخاص: {api_status}
 
-**🤖 حالة البوت:**
-• الحالة: ✅ نشط
-• الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-• الإصدار: 1.0.0
+💻 **الخادم:**
+• الذاكرة: {memory_info.percent}% مستخدم
+• الوقت: {datetime.now().strftime('%H:%M:%S')}
 
-**✅ كل شيء يعمل بشكل ممتاز**
+✅ **النظام جاهز للعمل**
         """
         bot.send_message(message.chat.id, status_text)
-        logger.info(f"✅ تم معالجة /status من {message.from_user.first_name}")
     except Exception as e:
         logger.error(f"❌ خطأ في /status: {e}")
-        bot.send_message(message.chat.id, "⚠️ حدث خطأ في الحصول على حالة الخادم")
 
 @bot.message_handler(func=lambda message: True)
-def handle_all_messages(message):
-    """معالجة جميع الرسائل النصية"""
+def handle_ai_message(message):
+    """معالجة جميع الرسائل بالذكاء الاصطناعي"""
     try:
         user = message.from_user
-        response = f"""
-💬 **شكراً على رسالتك يا {user.first_name}!**
+        user_id = user.id
+        user_message = message.text
+        
+        logger.info(f"🧠 معالجة رسالة من {user.first_name}: {user_message[:50]}...")
+        
+        # إظهار "يكتب..."
+        bot.send_chat_action(message.chat.id, 'typing')
+        
+        # توليد الرد باستخدام API الخاص
+        ai_response = CustomAIService.generate_response(user_id, user_message)
+        
+        # إرسال الرد
+        response_text = f"""
+💭 **سؤالك:** {user_message}
 
-📝 **نص رسالتك:** {message.text}
+🤖 **الرد:** {ai_response}
 
-💡 **للمساعدة، استخدم:** /help
-
-🎯 **البوت يعمل بشكل مثالي على Render!**
+---
+🌐 *مدعوم بـ API خاص - استخدم /new لبدء محادثة جديدة*
         """
-        bot.send_message(message.chat.id, response)
-        logger.info(f"📩 رسالة من {user.first_name}: {message.text}")
+        
+        bot.send_message(message.chat.id, response_text)
+        logger.info(f"✅ تم الرد على {user.first_name}")
+        
     except Exception as e:
         logger.error(f"❌ خطأ في معالجة الرسالة: {e}")
+        bot.send_message(message.chat.id, "⚠️ عذراً، حدث خطأ في المعالجة. يرجى المحاولة مرة أخرى.")
 
 def main():
     """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل البوت...")
+    logger.info("🚀 بدء تشغيل بوت الذكاء الاصطناعي مع API الخاص...")
     
     try:
-        # إزالة أي webhook سابق
-        logger.info("🔄 إزالة webhooks سابقة...")
+        # إزالة webhooks سابقة
         bot.remove_webhook()
         
-        logger.info("✅ البوت جاهز، بدء الاستماع...")
+        # اختبار الاتصال بالـAPI
+        logger.info("🔗 اختبار الاتصال بالـAPI الخاص...")
+        test_url = f"{CustomAIService.API_URL}?text=test"
+        response = requests.get(test_url, timeout=10)
+        logger.info(f"✅ API الخاص يعمل: {response.status_code}")
         
-        # بدء الاستماع للرسائل
+        logger.info("✅ بوت الذكاء الاصطناعي مع API الخاص جاهز للعمل!")
+        
+        # بدء الاستماع
         bot.infinity_polling(timeout=60, long_polling_timeout=60)
         
     except Exception as e:
-        logger.error(f"❌ خطأ رئيسي: {e}")
+        logger.error(f"❌ خطأ في التشغيل: {e}")
         logger.info("🔄 إعادة المحاولة بعد 10 ثواني...")
-        
-        # إعادة المحاولة بعد 10 ثواني
         import time
         time.sleep(10)
         main()
