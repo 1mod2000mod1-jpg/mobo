@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: telegram-bot-clean
+    name: telegram-ai-bot-custom
     env: python
     plan: free
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python ai_bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
