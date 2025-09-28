@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Telegram AI Bot - بوت الذكاء الاصطناعي مع API الخاص
+Telegram AI Bot - بوت الذكاء الاصطناعي مع دعم المطور
 """
 
 import os
@@ -10,6 +10,7 @@ import requests
 from datetime import datetime
 from pathlib import Path
 import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -28,6 +29,9 @@ if not BOT_TOKEN:
 
 # إنشاء البوت
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# معلومات المطور
+DEVELOPER_USERNAME = "@xtt19x"
 
 # نظام الذاكرة
 class MemorySystem:
@@ -149,14 +153,14 @@ class CustomAIService:
         
         # ردود مبرمجة ذكية
         responses = {
-            'مرحبا': 'أهلاً وسهلاً! أنا بوت الذكاء الاصطناعي المدعوم بـ API الخاص. كيف يمكنني مساعدتك؟ 🎉',
+            'مرحبا': 'أهلاً وسهلاً! أنا بوت الذكاء الاصطناعي. كيف يمكنني مساعدتك؟ 🎉',
             'السلام عليكم': 'وعليكم السلام ورحمة الله وبركاته! أنا هنا لمساعدتك. 🌟',
             'شكرا': 'العفو! دائماً سعيد بمساعدتك. هل تحتاج مساعدة في شيء آخر؟ 😊',
-            'اسمك': 'أنا بوت الذكاء الاصطناعي المدعوم بـ API الخاص! 🤖',
+            'اسمك': 'أنا بوت الذكاء الاصطناعي! 🤖',
             'كيف حالك': 'أنا بخير الحمدلله! جاهز لمساعدتك في أي استفسار. 💫',
             'مساعدة': 'يمكنني مساعدتك في:\n• الإجابة على الأسئلة\n• الشرح والتوضيح\n• الكتابة والإبداع\n• حل المشكلات\nما الذي تحتاج مساعدة فيه؟ 🎯',
-            'api': 'أستخدم API خاص مخصص للذكاء الاصطناعي! 🌐',
-            'مطور': 'تم تطويري باستخدام API خاص ومخصص للعمل بكفاءة عالية! 💻'
+            'مطور': f'المطور: {DEVELOPER_USERNAME} 👨‍💻',
+            'xtt19x': f'هذا هو المطور! {DEVELOPER_USERNAME} 👨‍💻'
         }
         
         # البحث عن رد مبرمج
@@ -179,12 +183,20 @@ class CustomAIService:
         
         return response
 
+# إنشاء زر المطور
+def create_developer_button():
+    """إنشاء زر للتواصل مع المطور"""
+    keyboard = InlineKeyboardMarkup()
+    developer_btn = InlineKeyboardButton("👨‍💻 تواصل مع المطور", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
+    keyboard.add(developer_btn)
+    return keyboard
+
 # أوامر البوت
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     """بدء المحادثة"""
     try:
-        welcome_text = """
+        welcome_text = f"""
 🤖 **مرحباً! أنا بوت الذكاء الاصطناعي المتقدم**
 
 🧠 **المميزات:**
@@ -199,11 +211,13 @@ def handle_start(message):
 /new - محادثة جديدة
 /memory - إدارة الذاكرة
 /status - حالة النظام
-/api - معلومات الـAPI
+/developer - المطور
+
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
 
 🔧 **اكتب أي سؤال وسأجيبك باستخدام الذكاء الاصطناعي المتقدم!**
         """
-        bot.send_message(message.chat.id, welcome_text)
+        bot.send_message(message.chat.id, welcome_text, reply_markup=create_developer_button())
         logger.info(f"✅ بدء محادثة مع {message.from_user.first_name}")
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
@@ -212,7 +226,7 @@ def handle_start(message):
 def handle_help(message):
     """عرض المساعدة"""
     try:
-        help_text = """
+        help_text = f"""
 🆘 **مركز المساعدة - بوت الذكاء الاصطناعي**
 
 **🧠 المميزات:**
@@ -227,7 +241,10 @@ def handle_help(message):
 /new - محادثة جديدة
 /memory - إدارة الذاكرة
 /status - حالة النظام
-/api - معلومات الـAPI
+/developer - المطور
+
+**👨‍💻 الدعم:**
+{DEVELOPER_USERNAME}
 
 **💡 أمثلة للأسئلة:**
 • "اشرح لي الذكاء الاصطناعي"
@@ -235,33 +252,37 @@ def handle_help(message):
 • "ما هو أفضل نظام تشغيل؟"
 • "ساعدني في حل مشكلة"
         """
-        bot.send_message(message.chat.id, help_text)
+        bot.send_message(message.chat.id, help_text, reply_markup=create_developer_button())
     except Exception as e:
         logger.error(f"❌ خطأ في /help: {e}")
 
-@bot.message_handler(commands=['api'])
-def handle_api_info(message):
-    """معلومات عن الـAPI"""
+@bot.message_handler(commands=['developer'])
+def handle_developer(message):
+    """معلومات المطور"""
     try:
-        api_info = f"""
-🌐 **معلومات نظام الـAPI**
+        developer_info = f"""
+👨‍💻 **معلومات المطور**
 
-**🔗 الرابط:** `{CustomAIService.API_URL}`
-**📡 النوع:** GET Request
-**⚡ الحالة:** 🟢 نشط
-**🎯 الاستخدام:** ?text=نص_السؤال
+**📝 الاسم:** {DEVELOPER_USERNAME}
+**💻 التخصص:** تطوير بوتات الذكاء الاصطناعي
+**🌐 الخبرة:** أنظمة الذكاء الاصطناعي و APIs
 
-**💻 المميزات:**
-• استجابات ذكية وسريعة
-• معالجة نصوص متقدمة
-• دعم اللغة العربية
-• أداء عالي
+**📞 للتواصل:**
+• عبر التلقرام: {DEVELOPER_USERNAME}
+• للإستفسارات التقنية
+• لتطوير بوتات مخصصة
+• لدعم تقني متقدم
 
-✅ **النظام يعمل بشكل مثالي!**
+**🚀 تم تطوير هذا البوت باستخدام:**
+• Python
+• Custom AI API
+• Telegram Bot API
+• Memory Management System
         """
-        bot.send_message(message.chat.id, api_info)
+        bot.send_message(message.chat.id, developer_info, reply_markup=create_developer_button())
+        logger.info(f"✅ عرض معلومات المطور لـ {message.from_user.first_name}")
     except Exception as e:
-        logger.error(f"❌ خطأ في /api: {e}")
+        logger.error(f"❌ خطأ في /developer: {e}")
 
 @bot.message_handler(commands=['new'])
 def handle_new(message):
@@ -321,9 +342,11 @@ def handle_status(message):
 • الذاكرة: {memory_info.percent}% مستخدم
 • الوقت: {datetime.now().strftime('%H:%M:%S')}
 
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
+
 ✅ **النظام جاهز للعمل**
         """
-        bot.send_message(message.chat.id, status_text)
+        bot.send_message(message.chat.id, status_text, reply_markup=create_developer_button())
     except Exception as e:
         logger.error(f"❌ خطأ في /status: {e}")
 
@@ -343,17 +366,17 @@ def handle_ai_message(message):
         # توليد الرد باستخدام API الخاص
         ai_response = CustomAIService.generate_response(user_id, user_message)
         
-        # إرسال الرد
+        # إرسال الرد مع زر المطور
         response_text = f"""
 💭 **سؤالك:** {user_message}
 
 🤖 **الرد:** {ai_response}
 
 ---
-🌐 *مدعوم بـ API خاص - استخدم /new لبدء محادثة جديدة*
+👨‍💻 *تم التطوير بواسطة {DEVELOPER_USERNAME} - استخدم /new لبدء محادثة جديدة*
         """
         
-        bot.send_message(message.chat.id, response_text)
+        bot.send_message(message.chat.id, response_text, reply_markup=create_developer_button())
         logger.info(f"✅ تم الرد على {user.first_name}")
         
     except Exception as e:
@@ -362,7 +385,7 @@ def handle_ai_message(message):
 
 def main():
     """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل بوت الذكاء الاصطناعي مع API الخاص...")
+    logger.info("🚀 بدء تشغيل بوت الذكاء الاصطناعي مع دعم المطور...")
     
     try:
         # إزالة webhooks سابقة
@@ -374,7 +397,7 @@ def main():
         response = requests.get(test_url, timeout=10)
         logger.info(f"✅ API الخاص يعمل: {response.status_code}")
         
-        logger.info("✅ بوت الذكاء الاصطناعي مع API الخاص جاهز للعمل!")
+        logger.info(f"✅ بوت الذكاء الاصطناعي جاهز - المطور: {DEVELOPER_USERNAME}")
         
         # بدء الاستماع
         bot.infinity_polling(timeout=60, long_polling_timeout=60)
