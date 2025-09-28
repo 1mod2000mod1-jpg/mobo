@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Telegram AI Bot - بوت الذكاء الاصطناعي مع لوحة تحكم المطور
+Telegram AI Bot - بوت الذكاء الاصطناعي مع فصل الأوامر عن الأسئلة
 """
 
 import os
@@ -365,7 +365,7 @@ def ask_broadcast_message(call):
     )
     # سنتعامل مع البث في رسالة منفصلة
 
-# أوامر البوت
+# الأوامر الأساسية - تعامل بشكل منفصل عن الأسئلة
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     """بدء المحادثة"""
@@ -419,6 +419,134 @@ def handle_start(message):
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
 
+@bot.message_handler(commands=['help'])
+def handle_help(message):
+    """عرض المساعدة"""
+    try:
+        help_text = f"""
+🆘 **مركز المساعدة - بوت الذكاء الاصطناعي**
+
+**🧠 المميزات:**
+• مدعوم بـ API خاص للذكاء الاصطناعي
+• محادثات ذكية مع الذاكرة
+• إجابات دقيقة وسريعة
+• دعم كامل للعربية
+
+**🎯 الأوامر:**
+/start - بدء البوت
+/help - هذه الرسالة
+/new - محادثة جديدة
+/memory - إدارة الذاكرة
+/status - حالة النظام
+/developer - المطور
+
+**👨‍💻 الدعم:**
+{DEVELOPER_USERNAME}
+
+**💡 أمثلة للأسئلة:**
+• "اشرح لي الذكاء الاصطناعي"
+• "كيف أتعلم البرمجة؟"
+• "ما هو أفضل نظام تشغيل؟"
+• "ساعدني في حل مشكلة"
+        """
+        bot.send_message(message.chat.id, help_text, reply_markup=create_developer_button())
+    except Exception as e:
+        logger.error(f"❌ خطأ في /help: {e}")
+
+@bot.message_handler(commands=['developer'])
+def handle_developer(message):
+    """معلومات المطور"""
+    try:
+        developer_info = f"""
+👨‍💻 **معلومات المطور**
+
+**📝 الاسم:** {DEVELOPER_USERNAME}
+**💻 التخصص:** تطوير بوتات الذكاء الاصطناعي
+**🌐 الخبرة:** أنظمة الذكاء الاصطناعي و APIs
+
+**📞 للتواصل:**
+• عبر التلقرام: {DEVELOPER_USERNAME}
+• للإستفسارات التقنية
+• لتطوير بوتات مخصصة
+• لدعم تقني متقدم
+
+**🚀 تم تطوير هذا البوت باستخدام:**
+• Python
+• Custom AI API
+• Telegram Bot API
+• Memory Management System
+        """
+        bot.send_message(message.chat.id, developer_info, reply_markup=create_developer_button())
+        logger.info(f"✅ عرض معلومات المطور لـ {message.from_user.first_name}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في /developer: {e}")
+
+@bot.message_handler(commands=['new'])
+def handle_new(message):
+    """بدء محادثة جديدة"""
+    try:
+        user_id = message.from_user.id
+        memory.clear_conversation(user_id)
+        bot.send_message(message.chat.id, "🔄 **تم بدء محادثة جديدة!**\n\n💬 الذاكرة السابقة تم مسحها. يمكنك البدء من جديد.")
+        logger.info(f"✅ بدء محادثة جديدة لـ {message.from_user.first_name}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في /new: {e}")
+
+@bot.message_handler(commands=['memory'])
+def handle_memory(message):
+    """عرض معلومات الذاكرة"""
+    try:
+        user_id = message.from_user.id
+        conversation = memory.load_conversation(user_id)
+        memory_text = f"""
+🧠 **معلومات الذاكرة**
+
+• عدد الرسائل: {len(conversation)}
+• المساحة: {len(conversation) * 0.1:.1f}KB تقريباً
+• الحالة: {'🟢 نشطة' if conversation else '⚪ فارغة'}
+
+💡 استخدم /new لمسح الذاكرة
+        """
+        bot.send_message(message.chat.id, memory_text)
+    except Exception as e:
+        logger.error(f"❌ خطأ في /memory: {e}")
+
+@bot.message_handler(commands=['status'])
+def handle_status(message):
+    """حالة النظام"""
+    try:
+        import psutil
+        memory_info = psutil.virtual_memory()
+        
+        # اختبار الاتصال بالـAPI
+        api_status = "🟢 نشط"
+        try:
+            test_response = requests.get(f"{CustomAIService.API_URL}?text=test", timeout=10)
+            if test_response.status_code != 200:
+                api_status = "🟡 مشكلة"
+        except:
+            api_status = "🔴 غير متصل"
+        
+        status_text = f"""
+📊 **حالة نظام الذكاء الاصطناعي**
+
+🤖 **البوت:**
+• الحالة: 🟢 نشط
+• الذاكرة النشطة: {len(memory.conversations)} مستخدم
+• API الخاص: {api_status}
+
+💻 **الخادم:**
+• الذاكرة: {memory_info.percent}% مستخدم
+• الوقت: {datetime.now().strftime('%H:%M:%S')}
+
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
+
+✅ **النظام جاهز للعمل**
+        """
+        bot.send_message(message.chat.id, status_text, reply_markup=create_developer_button())
+    except Exception as e:
+        logger.error(f"❌ خطأ في /status: {e}")
+
 @bot.message_handler(commands=['admin'])
 def handle_admin(message):
     """لوحة تحكم المطور"""
@@ -445,13 +573,15 @@ def handle_admin(message):
         reply_markup=create_admin_panel()
     )
 
-# ... باقي الأوامر (help, developer, new, memory, status) تبقى كما هي
-# مع إضافة تحديث الإحصائيات في handle_ai_message
-
+# معالجة الأسئلة فقط (ليست أوامر)
 @bot.message_handler(func=lambda message: True)
 def handle_ai_message(message):
-    """معالجة جميع الرسائل بالذكاء الاصطناعي"""
+    """معالجة جميع الرسائل العادية (ليست أوامر) بالذكاء الاصطناعي"""
     try:
+        # إذا كانت الرسالة تبدأ بـ / فهي أمر، نتجاهلها هنا
+        if message.text.startswith('/'):
+            return
+            
         user = message.from_user
         user_id = user.id
         user_message = message.text
@@ -464,7 +594,7 @@ def handle_ai_message(message):
             user_message
         )
         
-        logger.info(f"🧠 معالجة رسالة من {user.first_name}: {user_message[:50]}...")
+        logger.info(f"🧠 معالجة سؤال من {user.first_name}: {user_message[:50]}...")
         
         # إظهار "يكتب..."
         bot.send_chat_action(message.chat.id, 'typing')
@@ -491,7 +621,7 @@ def handle_ai_message(message):
 
 def main():
     """الدالة الرئيسية"""
-    logger.info("🚀 بدء تشغيل بوت الذكاء الاصطناعي مع لوحة تحكم المطور...")
+    logger.info("🚀 بدء تشغيل بوت الذكاء الاصطناعي مع فصل الأوامر عن الأسئلة...")
     
     try:
         # إزالة webhooks سابقة
