@@ -7,6 +7,9 @@ import os
 import json
 import logging
 import requests
+from flask import Flask, request
+import random
+import logging
 import threading
 import time
 from datetime import datetime, timedelta
@@ -14,19 +17,79 @@ from pathlib import Path
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+app = Flask(__name__)
 # إعداد التسجيل
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("موبي_البوت")
-
+    format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+logger = logging.getLogger(__name__)
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 # التوكن
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
+def send_telegram_message(chat_id, text):
+    """إرسال رسالة عبر تليجرام API مباشرة"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
 if not BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN غير معروف")
     exit(1)
+
+# إنشاء البوت
+bot = telebot.TeleBot(BOT_TOKEN)
+
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    try:
+        response = requests.post(url, json=data, timeout=10)
+        return response.json()
+
+        welcome_text = """🎉 **مرحباً! البوت يعمل بنجاح**
+
+🤖 **تم النشر على Render بنجاح**
+
+✅ **الحالة: نشط ومستقر**
+
+/start - هذه الرسالة
+/help - المساعدة
+        """
+        bot.send_message(message.chat.id, welcome_text)
+        logger.info(f"✅ تم معالجة /start من {message.from_user.first_name}")
+    except Exception as e:
+        print(f"Telegram API error: {e}")
+        return None
+        logger.error(f"❌ خطأ في /start: {e}")
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendChatAction"
+    data = {
+        "chat_id": chat_id,
+        "action": "typing"
+    }
+@bot.message_handler(commands=['ping'])
+def handle_ping(message):
+    try:
+        requests.post(url, json=data, timeout=5)
+    except:
+        pass
+        bot.send_message(message.chat.id, "🏓 **pong!**\n\n✅ البوت يعمل بشكل ممتاز!")
+        logger.info(f"✅ تم معالجة /ping من {message.from_user.first_name}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في /ping: {e}")
+def get_free_ai_response(message_text):
+    """استخدام خدمات مجانية دائمة للذكاء الاصطناعي"""
+
+    # 1. أولاً: حاول مع Hugging Face (مجاني)
+@bot.message_handler(commands=['help'])
+def handle_help(message):
+
+
+
+def send_typing_action(chat_id):
+    """إظهار حالة الكتابة"""
 
 # إنشاء البوت
 bot = telebot.TeleBot(BOT_TOKEN)
