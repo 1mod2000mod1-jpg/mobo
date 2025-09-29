@@ -368,7 +368,20 @@ def create_admin_panel():
     
     return keyboard
 
-# الأوامر الأساسية - تم إصلاحها
+def create_users_keyboard(users_data, action):
+    """إنشاء كيبورد لقائمة المستخدمين"""
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    for user_id, user_info in users_data[:10]:
+        btn_text = f"{user_info['first_name']} ({user_info['message_count']} رسالة)"
+        keyboard.add(InlineKeyboardButton(btn_text, callback_data=f"{action}_{user_id}"))
+    
+    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+    keyboard.add(back_btn)
+    
+    return keyboard
+
+# الأوامر الأساسية
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     """بدء المحادثة"""
@@ -419,7 +432,7 @@ def handle_start(message):
 @bot.message_handler(commands=['help'])
 def handle_help(message):
     """عرض المساعدة"""
-    help_text = """
+    help_text = f"""
 🆘 **مساعدة البوت**
 
 📋 **الأوامر المتاحة:**
@@ -435,8 +448,8 @@ def handle_help(message):
 • يمكنني المساعدة في مواضيع متنوعة
 • لدي ذاكرة للمحادثة تذكر آخر 15 رسالة
 
-👨‍💻 **المطور:** {}
-    """.format(DEVELOPER_USERNAME)
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
+    """
     
     bot.send_message(message.chat.id, help_text)
     memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/help")
@@ -474,6 +487,7 @@ def handle_status(message):
     total_users = memory.get_total_users()
     active_today = memory.get_active_today()
     total_messages = sum(stats['message_count'] for stats in memory.user_stats.values())
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     status_text = f"""
 📊 **حالة النظام**
@@ -484,10 +498,10 @@ def handle_status(message):
 • مجموع الرسائل: {total_messages}
 
 🔄 **الحالة:** ✅ يعمل بشكل طبيعي
-🕒 **آخر تحديث:** {}
+🕒 **آخر تحديث:** {current_time}
 
-👨‍💻 **المطور:** {}
-    """.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'), DEVELOPER_USERNAME)
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
+    """
     
     bot.send_message(message.chat.id, status_text)
     memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/status")
@@ -573,7 +587,7 @@ def handle_all_messages(message):
         logger.error(f"❌ خطأ في معالجة الرسالة: {e}")
         bot.send_message(message.chat.id, "⚠️ عذراً، حدث خطأ في المعالجة. يرجى المحاولة مرة أخرى.")
 
-# معالجة Callback Queries - تم إصلاحها
+# معالجة Callback Queries
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     """معالجة ضغطات الأزرار"""
@@ -611,6 +625,31 @@ def handle_callback(call):
     except Exception as e:
         logger.error(f"❌ خطأ في معالجة الكallback: {e}")
         bot.answer_callback_query(call.id, "❌ حدث خطأ في المعالجة!", show_alert=True)
+
+def show_admin_panel(call):
+    """عرض لوحة التحكم الرئيسية"""
+    admin_text = f"""
+👨‍💻 **لوحة تحكم المطور** {DEVELOPER_USERNAME}
+
+📊 **اختر الإجراء المطلوب:**
+
+• 📊 إحصائيات الأعضاء
+• 👥 قائمة المستخدمين  
+• 🛡️ إدارة المشرفين
+• 💬 محادثات الأعضاء
+• 🚫 إدارة الحظر
+• 📢 بث رسالة للمستخدمين
+
+✅ **البوت يعمل تحت إشرافك**
+    """
+    
+    bot.edit_message_text(
+        admin_text,
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=create_admin_panel(),
+        parse_mode='Markdown'
+    )
 
 def show_admin_stats(call):
     """عرض إحصائيات الأعضاء"""
@@ -695,7 +734,7 @@ def show_conversations_list(call):
         users_with_conversations = []
         for user_id, user_info in users.items():
             conversation = memory.get_user_conversation(user_id)
-            if conversation:  # إذا كان لديه محادثات
+            if conversation:
                 users_with_conversations.append((user_id, user_info))
         
         if not users_with_conversations:
@@ -748,7 +787,7 @@ def view_user_conversation(call):
         
         conv_text = f"💬 **محادثة {user_info.get('first_name', 'مستخدم')}:**\n\n"
         
-        for msg in conversation[-10:]:  # آخر 10 رسائل
+        for msg in conversation[-10:]:
             role = "👤" if msg['role'] == 'user' else "🤖"
             time = datetime.fromisoformat(msg['timestamp']).strftime('%H:%M')
             content = msg['content']
@@ -771,7 +810,6 @@ def view_user_conversation(call):
         logger.error(f"❌ خطأ في عرض المحادثة: {e}")
         bot.answer_callback_query(call.id, "❌ حدث خطأ!", show_alert=True)
 
-# الدوال الأخرى المتبقية (show_admins_management, show_ban_management, etc.)
 def show_admins_management(call):
     """إدارة المشرفين"""
     try:
@@ -860,9 +898,12 @@ def main():
         
         # اختبار الاتصال بالـAPI
         logger.info("🔗 اختبار الاتصال بالـAPI الخاص...")
-        test_url = f"{CustomAIService.API_URL}?text=test"
-        response = requests.get(test_url, timeout=10)
-        logger.info(f"✅ API الخاص يعمل: {response.status_code}")
+        try:
+            test_url = f"{CustomAIService.API_URL}?text=test"
+            response = requests.get(test_url, timeout=10)
+            logger.info(f"✅ API الخاص يعمل: {response.status_code}")
+        except Exception as api_error:
+            logger.warning(f"⚠️ API الخاص غير متاح: {api_error}")
         
         logger.info(f"✅ بوت الذكاء الاصطناعي جاهز - المطور: {DEVELOPER_USERNAME}")
         logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
