@@ -39,7 +39,11 @@ DEVELOPER_ID = 6521966233
 BOT_SETTINGS = {
     "required_channel": "",
     "free_messages": 50,
-    "welcome_content": {"type": "text", "content": ""},
+    "welcome_image": "",
+    "welcome_video": "",
+    "welcome_audio": "",
+    "welcome_document": "",
+    "welcome_text": "",
     "subscription_enabled": False
 }
 
@@ -54,7 +58,62 @@ class MemorySystem:
         self.banned_users = self.load_banned_users()
         self.vip_users = self.load_vip_users()
         self.settings = self.load_settings()
-        self.temp_files = {}
+        
+        # بدء تنظيف المحادثات القديمة
+        self.start_cleanup_thread()
+    
+    def start_cleanup_thread(self):
+        """بدء خيط لتنظيف المحادثات القديمة تلقائياً"""
+        def cleanup_old_conversations():
+            while True:
+                try:
+                    self.cleanup_old_messages()
+                    time.sleep(600)  # تنظيف كل 10 دقائق
+                except Exception as e:
+                    logger.error(f"❌ خطأ في تنظيف المحادثات: {e}")
+                    time.sleep(300)
+        
+        thread = threading.Thread(target=cleanup_old_conversations, daemon=True)
+        thread.start()
+        logger.info("✅ بدأ تنظيف المحادثات القديمة تلقائياً")
+    
+    def cleanup_old_messages(self):
+        """حذف المحادثات الأقدم من 10 دقائق"""
+        try:
+            cutoff_time = datetime.now() - timedelta(minutes=10)
+            deleted_count = 0
+            
+            for user_file in self.workspace.glob("user_*.json"):
+                try:
+                    with open(user_file, 'r', encoding='utf-8') as f:
+                        conversation = json.load(f)
+                    
+                    # تصفية الرسائل الأحدث من 10 دقائق
+                    filtered_conversation = []
+                    for msg in conversation:
+                        msg_time = datetime.fromisoformat(msg['timestamp'])
+                        if msg_time > cutoff_time:
+                            filtered_conversation.append(msg)
+                        else:
+                            deleted_count += 1
+                    
+                    # حفظ المحادثة المصفاة
+                    if filtered_conversation:
+                        with open(user_file, 'w', encoding='utf-8') as f:
+                            json.dump(filtered_conversation, f, ensure_ascii=False, indent=2)
+                    else:
+                        # حذف الملف إذا كانت المحادثة فارغة
+                        user_file.unlink()
+                        
+                except Exception as e:
+                    logger.error(f"❌ خطأ في تنظيف ملف {user_file}: {e}")
+                    continue
+            
+            if deleted_count > 0:
+                logger.info(f"🧹 تم تنظيف {deleted_count} رسالة قديمة")
+                
+        except Exception as e:
+            logger.error(f"❌ خطأ عام في التنظيف: {e}")
     
     def get_user_file(self, user_id):
         return self.workspace / f"user_{user_id}.json"
@@ -389,22 +448,6 @@ class MemorySystem:
         user_file = self.get_user_file(user_id)
         if user_file.exists():
             user_file.unlink()
-    
-    def cleanup_old_conversations(self):
-        """تنظيف المحادثات القديمة"""
-        try:
-            for user_id in list(self.conversations.keys()):
-                conversation = self.get_user_conversation(user_id)
-                if conversation:
-                    # حذف الرسائل الأقدم من 10 دقائق
-                    time_threshold = datetime.now() - timedelta(minutes=10)
-                    cleaned_conversation = [
-                        msg for msg in conversation 
-                        if datetime.fromisoformat(msg['timestamp']) >= time_threshold
-                    ]
-                    self.save_conversation(user_id, cleaned_conversation)
-        except Exception as e:
-            logger.error(f"❌ خطأ في تنظيف المحادثات: {e}")
 
 # تهيئة النظام
 memory = MemorySystem()
@@ -449,14 +492,7 @@ class AIService:
             if response.status_code == 200:
                 ai_response = response.text.strip()
                 
-                # تنظيف الرد من JSON إذا كان موجوداً
-                if '{"date"' in ai_response and '"response"' in ai_response:
-                    import re
-                    match = re.search(r'"response":"([^"]+)"', ai_response)
-                    if match:
-                        ai_response = match.group(1)
-                
-                # تنظيف الرد من معلومات إضافية
+                # تنظيف الرد من المعلومات غير المرغوب فيها
                 lines = ai_response.split('\n')
                 clean_lines = []
                 for line in lines:
@@ -591,11 +627,28 @@ def create_settings_menu():
     channel_btn = InlineKeyboardButton("📢 إدارة القناة", callback_data="settings_channel")
     subscription_btn = InlineKeyboardButton("🔐 الاشتراك الإجباري", callback_data="settings_subscription")
     messages_btn = InlineKeyboardButton("💬 عدد الرسائل", callback_data="settings_messages")
-    welcome_btn = InlineKeyboardButton("🎉 الترحيب", callback_data="settings_welcome")
+    welcome_btn = InlineKeyboardButton("🎊 الترحيب", callback_data="settings_welcome")
     back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
     
     keyboard.add(channel_btn, subscription_btn)
     keyboard.add(messages_btn, welcome_btn)
+    keyboard.add(back_btn)
+    
+    return keyboard
+
+def create_welcome_menu():
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    text_btn = InlineKeyboardButton("📝 نص ترحيب", callback_data="welcome_text")
+    photo_btn = InlineKeyboardButton("🖼️ صورة ترحيب", callback_data="welcome_photo")
+    video_btn = InlineKeyboardButton("🎥 فيديو ترحيب", callback_data="welcome_video")
+    audio_btn = InlineKeyboardButton("🎵 صوت ترحيب", callback_data="welcome_audio")
+    document_btn = InlineKeyboardButton("📄 ملف ترحيب", callback_data="welcome_document")
+    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")
+    
+    keyboard.add(text_btn, photo_btn)
+    keyboard.add(video_btn, audio_btn)
+    keyboard.add(document_btn)
     keyboard.add(back_btn)
     
     return keyboard
@@ -631,23 +684,6 @@ def create_points_menu():
     
     return keyboard
 
-def create_welcome_menu():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    
-    text_btn = InlineKeyboardButton("📝 نص ترحيبي", callback_data="welcome_text")
-    photo_btn = InlineKeyboardButton("🖼️ صورة ترحيبية", callback_data="welcome_photo")
-    video_btn = InlineKeyboardButton("🎥 فيديو ترحيبي", callback_data="welcome_video")
-    audio_btn = InlineKeyboardButton("🎵 صوت ترحيبي", callback_data="welcome_audio")
-    clear_btn = InlineKeyboardButton("🗑️ مسح الترحيب", callback_data="welcome_clear")
-    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")
-    
-    keyboard.add(text_btn, photo_btn)
-    keyboard.add(video_btn, audio_btn)
-    keyboard.add(clear_btn)
-    keyboard.add(back_btn)
-    
-    return keyboard
-
 def require_subscription(func):
     def wrapper(message):
         if not memory.settings.get('required_channel') or not memory.settings.get('subscription_enabled', False):
@@ -679,42 +715,18 @@ def require_subscription(func):
     return wrapper
 
 def send_welcome_message(chat_id, user_id):
-    """إرسال رسالة الترحيب المخصصة"""
-    welcome_content = memory.settings.get('welcome_content', {})
-    welcome_type = welcome_content.get('type', 'text')
-    content = welcome_content.get('content', '')
-    
-    if not content:
-        # رسالة ترحيب افتراضية
-        handle_start_type(chat_id, user_id, force_text=True)
-        return
-    
+    """إرسال رسالة ترحيبية مع الوسائط المتعددة"""
     try:
-        if welcome_type == 'text':
-            bot.send_message(chat_id, content, parse_mode='Markdown', reply_markup=create_main_menu() if not memory.is_admin(user_id) else create_admin_panel())
-        elif welcome_type == 'photo':
-            bot.send_photo(chat_id, content, parse_mode='Markdown', reply_markup=create_main_menu() if not memory.is_admin(user_id) else create_admin_panel())
-        elif welcome_type == 'video':
-            bot.send_video(chat_id, content, parse_mode='Markdown', reply_markup=create_main_menu() if not memory.is_admin(user_id) else create_admin_panel())
-        elif welcome_type == 'audio':
-            bot.send_audio(chat_id, content, parse_mode='Markdown', reply_markup=create_main_menu() if not memory.is_admin(user_id) else create_admin_panel())
-    except Exception as e:
-        logger.error(f"❌ خطأ في إرسال الترحيب: {e}")
-        # Fallback إلى الرسالة النصية
-        handle_start_type(chat_id, user_id, force_text=True)
-
-def handle_start_type(chat_id, user_id, force_text=False):
-    """معالجة رسالة البداية مع تحديد النوع"""
-    user_status = ""
-    if memory.is_vip(user_id):
-        user_status = "🌟 **أنت مستخدم VIP** - وصول غير محدود!\n"
-    elif memory.is_admin(user_id):
-        user_status = "🛡️ **أنت مشرف** - صلاحيات كاملة!\n"
-    else:
-        can_send, status = memory.can_send_message(user_id)
-        user_status = f"🔓 **وضع مجاني** - {status}\n"
-    
-    welcome_text = f"""
+        user_status = ""
+        if memory.is_vip(user_id):
+            user_status = "🌟 **أنت مستخدم VIP** - وصول غير محدود!\n"
+        elif memory.is_admin(user_id):
+            user_status = "🛡️ **أنت مشرف** - صلاحيات كاملة!\n"
+        else:
+            can_send, status = memory.can_send_message(user_id)
+            user_status = f"🔓 **وضع مجاني** - {status}\n"
+        
+        welcome_text = memory.settings.get('welcome_text') or f"""
 🤖 **مرحباً! أنا موبي**
 
 {user_status}
@@ -734,15 +746,78 @@ def handle_start_type(chat_id, user_id, force_text=False):
 /developer - المطور
 
 👑 **المطور:** {DEVELOPER_USERNAME}
-    """
-    
-    if force_text or not memory.settings.get('welcome_content', {}).get('content'):
-        if memory.is_admin(user_id):
-            bot.send_message(chat_id, welcome_text, reply_markup=create_admin_panel(), parse_mode='Markdown')
-        else:
-            bot.send_message(chat_id, welcome_text, reply_markup=create_main_menu(), parse_mode='Markdown')
-    else:
-        send_welcome_message(chat_id, user_id)
+        """
+        
+        # إرسال الوسائط المتعددة حسب الإعدادات
+        sent = False
+        
+        # محاولة إرسال فيديو أولاً
+        if memory.settings.get('welcome_video'):
+            try:
+                bot.send_video(
+                    chat_id,
+                    memory.settings['welcome_video'],
+                    caption=welcome_text,
+                    reply_markup=create_admin_panel() if memory.is_admin(user_id) else create_main_menu(),
+                    parse_mode='Markdown'
+                )
+                sent = True
+            except Exception as e:
+                logger.error(f"❌ خطأ في إرسال الفيديو الترحيبي: {e}")
+        
+        # إذا لم ينجح الفيديو، حاول إرسال صورة
+        if not sent and memory.settings.get('welcome_photo'):
+            try:
+                bot.send_photo(
+                    chat_id,
+                    memory.settings['welcome_photo'],
+                    caption=welcome_text,
+                    reply_markup=create_admin_panel() if memory.is_admin(user_id) else create_main_menu(),
+                    parse_mode='Markdown'
+                )
+                sent = True
+            except Exception as e:
+                logger.error(f"❌ خطأ في إرسال الصورة الترحيبية: {e}")
+        
+        # إذا لم تنجح الصورة، حاول إرسال صوت
+        if not sent and memory.settings.get('welcome_audio'):
+            try:
+                bot.send_audio(
+                    chat_id,
+                    memory.settings['welcome_audio'],
+                    caption=welcome_text,
+                    reply_markup=create_admin_panel() if memory.is_admin(user_id) else create_main_menu(),
+                    parse_mode='Markdown'
+                )
+                sent = True
+            except Exception as e:
+                logger.error(f"❌ خطأ في إرسال الصوت الترحيبي: {e}")
+        
+        # إذا لم ينجح الصوت، حاول إرسال ملف
+        if not sent and memory.settings.get('welcome_document'):
+            try:
+                bot.send_document(
+                    chat_id,
+                    memory.settings['welcome_document'],
+                    caption=welcome_text,
+                    reply_markup=create_admin_panel() if memory.is_admin(user_id) else create_main_menu(),
+                    parse_mode='Markdown'
+                )
+                sent = True
+            except Exception as e:
+                logger.error(f"❌ خطأ في إرسال الملف الترحيبي: {e}")
+        
+        # إذا لم تنجح أي وسائط، أرسل نص فقط
+        if not sent:
+            if memory.is_admin(user_id):
+                bot.send_message(chat_id, welcome_text, reply_markup=create_admin_panel(), parse_mode='Markdown')
+            else:
+                bot.send_message(chat_id, welcome_text, reply_markup=create_main_menu(), parse_mode='Markdown')
+                
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال الترحيب: {e}")
+        # إرسال رسالة بديلة في حالة الخطأ
+        bot.send_message(chat_id, "🤖 مرحباً! أنا موبي البوت الذكي. كيف يمكنني مساعدتك؟")
 
 @bot.message_handler(commands=['start'])
 @require_subscription
@@ -760,290 +835,1012 @@ def handle_start(message):
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
 
-# ... (جميع الدوال الأخرى تبقى كما هي مع التعديلات البسيطة)
+@bot.message_handler(commands=['help'])
+@require_subscription
+def handle_help(message):
+    help_text = f"""
+🆘 **مساعدة موبي**
 
-# حالات المستخدم
-broadcast_state = {}
-admin_state = {}
-ban_state = {}
-vip_state = {}
-settings_state = {}
-points_state = {}
-send_user_state = {}
-welcome_state = {}
+📋 **الأوامر:**
+/start - بدء المحادثة
+/help - المساعدة
+/status - حالة حسابك
+/upgrade - ترقية إلى VIP
+/memory - إدارة الذاكرة
+/new - محادثة جديدة
+/developer - المطور
 
-@bot.message_handler(func=lambda message: True)
-@require_subscription  
-def handle_all_messages(message):
-    try:
-        user_id = message.from_user.id
-        
-        # معالجة البث
-        if user_id in broadcast_state:
-            broadcast_type = broadcast_state[user_id]['type']
-            success_count = 0
-            total_users = len(memory.user_stats)
-            failed_users = []
-            
-            for chat_id in memory.user_stats.keys():
-                if chat_id == user_id:  # تخطي المرسل
-                    continue
-                try:
-                    if broadcast_type == 'text' and message.text:
-                        bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
-                    elif broadcast_type == 'photo' and message.photo:
-                        bot.send_photo(chat_id, message.photo[-1].file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                    elif broadcast_type == 'video' and message.video:
-                        bot.send_video(chat_id, message.video.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                    elif broadcast_type == 'audio' and message.audio:
-                        bot.send_audio(chat_id, message.audio.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                    elif broadcast_type == 'document' and message.document:
-                        bot.send_document(chat_id, message.document.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                    success_count += 1
-                except Exception as e:
-                    failed_users.append(chat_id)
-                    continue
-            
-            result_text = f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم"
-            if failed_users:
-                result_text += f"\n❌ فشل الإرسال لـ {len(failed_users)} مستخدم"
-            
-            bot.send_message(user_id, result_text)
-            broadcast_state.pop(user_id, None)
-            return
-        
-        # معالجة إرسال لمستخدم معين
-        if user_id in send_user_state:
-            if send_user_state[user_id]['step'] == 'waiting_user':
-                try:
-                    target_user_id = int(message.text)
-                    send_user_state[user_id]['target_user'] = target_user_id
-                    send_user_state[user_id]['step'] = 'waiting_content'
-                    bot.send_message(user_id, "📤 أرسل المحتوى الذي تريد إرساله:")
-                    return
-                except:
-                    bot.send_message(user_id, "❌ أدخل رقم مستخدم صحيح!")
-                    return
-            
-            elif send_user_state[user_id]['step'] == 'waiting_content':
-                target_user_id = send_user_state[user_id]['target_user']
-                try:
-                    if message.text:
-                        bot.send_message(target_user_id, f"📩 رسالة من الإدارة:\n\n{message.text}")
-                    elif message.photo:
-                        bot.send_photo(target_user_id, message.photo[-1].file_id, caption=message.caption or "📩 رسالة من الإدارة")
-                    elif message.video:
-                        bot.send_video(target_user_id, message.video.file_id, caption=message.caption or "📩 رسالة من الإدارة")
-                    elif message.audio:
-                        bot.send_audio(target_user_id, message.audio.file_id, caption=message.caption or "📩 رسالة من الإدارة")
-                    elif message.document:
-                        bot.send_document(target_user_id, message.document.file_id, caption=message.caption or "📩 رسالة من الإدارة")
-                    
-                    bot.send_message(user_id, "✅ تم إرسال الرسالة للمستخدم")
-                except:
-                    bot.send_message(user_id, "❌ فشل في إرسال الرسالة!")
-                
-                send_user_state.pop(user_id, None)
-                return
-        
-        # معالجة الترحيب المخصص
-        if user_id in welcome_state:
-            welcome_type = welcome_state[user_id]
-            try:
-                if welcome_type == 'text' and message.text:
-                    memory.update_settings({'welcome_content': {'type': 'text', 'content': message.text}})
-                    bot.send_message(user_id, "✅ تم حفظ النص الترحيبي")
-                elif welcome_type == 'photo' and message.photo:
-                    memory.update_settings({'welcome_content': {'type': 'photo', 'content': message.photo[-1].file_id}})
-                    bot.send_message(user_id, "✅ تم حفظ الصورة الترحيبية")
-                elif welcome_type == 'video' and message.video:
-                    memory.update_settings({'welcome_content': {'type': 'video', 'content': message.video.file_id}})
-                    bot.send_message(user_id, "✅ تم حفظ الفيديو الترحيبي")
-                elif welcome_type == 'audio' and message.audio:
-                    memory.update_settings({'welcome_content': {'type': 'audio', 'content': message.audio.file_id}})
-                    bot.send_message(user_id, "✅ تم حفظ الصوت الترحيبي")
-                else:
-                    bot.send_message(user_id, "❌ أرسل المحتوى المناسب للنوع المحدد")
-            except Exception as e:
-                bot.send_message(user_id, f"❌ خطأ في حفظ المحتوى: {e}")
-            welcome_state.pop(user_id, None)
-            return
-        
-        # ... (بقية معالجات الحالات)
-        
-        # معالجة الرسائل العادية
-        memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
-        
-        if memory.is_banned(user_id):
-            bot.send_message(message.chat.id, "❌ تم حظرك من استخدام البوت.")
-            return
-        
-        can_send, status = memory.can_send_message(user_id)
-        if not can_send:
-            bot.send_message(message.chat.id, f"❌ انتهت رسائلك المجانية! ({status})\n\n💎 ترقى إلى VIP للاستخدام غير المحدود!\n/upgrade للترقية")
-            return
-        
-        bot.send_chat_action(message.chat.id, 'typing')
-        
-        response = AIService.generate_response(user_id, message.text)
-        
-        if response:
-            bot.send_message(message.chat.id, response)
-        
-        logger.info(f"💬 معالجة رسالة من {message.from_user.first_name}")
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في المعالجة: {e}")
+💡 **الوضع المجاني:**
+• {memory.settings.get('free_messages', 50)} رسالة مجانية
+• إمكانية الترقية
 
-# معالجة الأزرار
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
-    user_id = call.from_user.id
+💎 **مميزات VIP:**
+• رسائل غير محدودة
+• أولوية في الردود
+• دعم فوري
+
+👑 **المطور:** {DEVELOPER_USERNAME}
+    """
+    bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
+    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/help")
+
+@bot.message_handler(commands=['upgrade'])
+def handle_upgrade(message):
+    if memory.is_vip(message.from_user.id):
+        vip_text = f"""
+🌟 **أنت مستخدم VIP بالفعل!**
+
+🎁 **مميزاتك:**
+✅ وصول غير محدود
+✅ أولوية في الردود
+✅ دعم فوري
+✅ مميزات حصرية
+
+👑 للمزيد: {DEVELOPER_USERNAME}
+        """
+    else:
+        vip_text = f"""
+💎 **ترقية إلى VIP**
+
+🔓 **الوضع الحالي:** مجاني ({memory.settings.get('free_messages', 50)} رسالة)
+💫 **بعد الترقية:** غير محدود!
+
+🎁 **مميزات VIP:**
+✅ رسائل غير محدودة
+✅ أولوية في الردود
+✅ دعم فوري
+✅ مميزات حصرية
+
+💰 **للترقية:** تواصل مع {DEVELOPER_USERNAME}
+        """
     
-    if call.data == "check_subscription":
-        if check_subscription(user_id):
-            bot.answer_callback_query(call.id, "✅ مشترك! يمكنك استخدام البوت الآن.")
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            handle_start(call.message)
-        else:
-            bot.answer_callback_query(call.id, "❌ لم تشترك بعد! اشترك ثم اضغط مرة أخرى.", show_alert=True)
+    bot.send_message(
+        message.chat.id, 
+        vip_text, 
+        parse_mode='Markdown',
+        reply_markup=create_developer_button()
+    )
+    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/upgrade")
+
+@bot.message_handler(commands=['status'])
+@require_subscription
+def handle_status(message):
+    user_id = message.from_user.id
+    user_stats = memory.user_stats.get(user_id, {})
     
-    elif call.data == "user_help":
-        handle_help(call.message)
-        bot.answer_callback_query(call.id, "📚 المساعدة")
+    can_send, status = memory.can_send_message(user_id)
     
-    elif call.data == "user_status":
-        handle_status(call.message)
-        bot.answer_callback_query(call.id, "📊 الحالة")
+    status_text = f"""
+📊 **حالة حسابك**
+
+👤 **المستخدم:** {user_stats.get('first_name', 'بدون اسم')}
+🆔 **المعرف:** @{user_stats.get('username', 'بدون معرف')}
+📅 **أول ظهور:** {user_stats.get('first_seen', 'غير معروف')}
+🔄 **آخر ظهور:** {user_stats.get('last_seen', 'غير معروف')}
+
+📨 **الرسائل:** {user_stats.get('message_count', 0)}
+💬 **الحالة:** {status}
+
+🎖️ **الرتبة:** {'🛡️ مشرف' if memory.is_admin(user_id) else '🌟 VIP' if memory.is_vip(user_id) else '🔓 مجاني'}
+🎯 **النقاط:** {user_stats.get('points', 0)}
+    """
     
-    elif call.data == "user_vip":
-        handle_upgrade(call.message)
-        bot.answer_callback_query(call.id, "💎 الترقية")
+    bot.send_message(message.chat.id, status_text, parse_mode='Markdown')
+    memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, "/status")
+
+@bot.message_handler(commands=['developer'])
+def handle_developer(message):
+    developer_text = f"""
+👑 **مطور موبي**
+
+💫 **السيد موبي**
+{DEVELOPER_USERNAME}
+
+⚡ **مطور محترف**
+🎯 **متخصص في الذكاء الاصطناعي**
+💎 **صانع البوتات المتقدمة**
+
+📧 **للتواصل:** {DEVELOPER_USERNAME}
+    """
+    bot.send_message(
+        message.chat.id, 
+        developer_text, 
+        parse_mode='Markdown',
+        reply_markup=create_developer_button()
+    )
+    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/developer")
+
+@bot.message_handler(commands=['memory'])
+@require_subscription
+def handle_memory(message):
+    user_id = message.from_user.id
+    conversation = memory.get_user_conversation(user_id)
     
-    elif not memory.is_admin(user_id):
-        bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!", show_alert=True)
+    if not conversation:
+        memory_text = "💭 **الذاكرة فارغة**\n\nلم تبدأ محادثة بعد!"
+    else:
+        memory_text = f"💭 **آخر {len(conversation)} رسالة في الذاكرة:**\n\n"
+        for i, msg in enumerate(conversation[-5:], 1):
+            role = "🧑‍💻 أنت" if msg['role'] == 'user' else "🤖 موبي"
+            content = msg['content'][:100] + "..." if len(msg['content']) > 100 else msg['content']
+            memory_text += f"{i}. {role}: {content}\n\n"
+    
+    keyboard = InlineKeyboardMarkup()
+    clear_btn = InlineKeyboardButton("🗑️ مسح الذاكرة", callback_data="clear_memory")
+    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="user_back")
+    keyboard.add(clear_btn, back_btn)
+    
+    bot.send_message(message.chat.id, memory_text, reply_markup=keyboard, parse_mode='Markdown')
+    memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, "/memory")
+
+@bot.message_handler(commands=['new'])
+@require_subscription
+def handle_new(message):
+    user_id = message.from_user.id
+    memory.clear_conversation(user_id)
+    bot.send_message(message.chat.id, "🔄 **بدأت محادثة جديدة!**\n\n💫 ذاكرتك نظيفة الآن، يمكنك البدء من جديد!", parse_mode='Markdown')
+    memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, "/new")
+
+@bot.message_handler(commands=['admin'])
+def handle_admin(message):
+    user_id = message.from_user.id
+    if not memory.is_admin(user_id):
+        bot.send_message(message.chat.id, "❌ **ليس لديك صلاحية الوصول!**\n\nهذا القسم للمشرفين فقط.", parse_mode='Markdown')
         return
     
-    elif call.data == "admin_stats":
-        show_admin_stats(call)
-    elif call.data == "admin_users":
-        show_users_list(call)
-    elif call.data == "admin_manage":
-        show_admins_management(call)
-    elif call.data == "admin_conversations":
-        show_conversations_list(call)
-    elif call.data == "admin_vip":
-        show_vip_management(call)
-    elif call.data == "admin_broadcast":
-        show_broadcast_menu(call)
-    elif call.data == "admin_ban":
-        show_ban_management(call)
-    elif call.data == "admin_points":
-        show_points_menu(call)
-    elif call.data == "admin_settings":
-        show_settings_menu(call)
-    elif call.data == "admin_back":
-        show_admin_panel(call)
-    
-    # أزرار البث
-    elif call.data.startswith("broadcast_"):
-        broadcast_type = call.data.split("_")[1]
-        broadcast_state[user_id] = {'type': broadcast_type}
-        bot.send_message(user_id, f"📢 أرسل {'النص' if broadcast_type == 'text' else 'الصورة' if broadcast_type == 'photo' else 'الفيديو' if broadcast_type == 'video' else 'الصوت' if broadcast_type == 'audio' else 'الملف'} الذي تريد بثه:")
-        bot.answer_callback_query(call.id, f"📢 بث {broadcast_type}")
-    
-    # أزرار الترحيب
-    elif call.data == "settings_welcome":
-        show_welcome_menu(call)
-    elif call.data.startswith("welcome_"):
-        welcome_type = call.data.split("_")[1]
-        if welcome_type == 'clear':
-            memory.update_settings({'welcome_content': {'type': 'text', 'content': ''}})
-            bot.answer_callback_query(call.id, "✅ تم مسح المحتوى الترحيبي")
-            show_welcome_menu(call)
-        else:
-            welcome_state[user_id] = welcome_type
-            bot.send_message(user_id, f"🎉 أرسل {'النص' if welcome_type == 'text' else 'الصورة' if welcome_type == 'photo' else 'الفيديو' if welcome_type == 'video' else 'الصوت'} الترحيبي:")
-            bot.answer_callback_query(call.id, f"🎉 ترحيب {welcome_type}")
-    
-    # ... (بقية معالجات الأزرار)
+    admin_text = f"""
+🛡️ **لوحة التحكم - موبي**
 
-def show_welcome_menu(call):
-    welcome_content = memory.settings.get('welcome_content', {})
-    current_type = welcome_content.get('type', 'text')
-    has_content = bool(welcome_content.get('content'))
-    
-    welcome_text = f"""
-🎉 **إعدادات الترحيب**
+📊 **إحصائيات البوت:**
+👥 **المستخدمين:** {memory.get_total_users()}
+🔄 **النشط اليوم:** {memory.get_active_today()}
+🌟 **VIP:** {len(memory.vip_users)}
+🛡️ **المشرفين:** {len(memory.admins)}
+🚫 **المحظورين:** {len(memory.banned_users)}
 
-📋 **النوع الحالي:** {current_type}
-✅ **الحالة:** {'🟢 معين' if has_content else '🔴 غير معين'}
-
-🛠 **اختر نوع المحتوى الترحيبي:**
+⚡ **اختر من القائمة:**
     """
-    bot.edit_message_text(welcome_text, call.message.chat.id, call.message.message_id,
-                        reply_markup=create_welcome_menu(), parse_mode='Markdown')
-    bot.answer_callback_query(call.id, "🎉 الترحيب")
+    bot.send_message(message.chat.id, admin_text, reply_markup=create_admin_panel(), parse_mode='Markdown')
+    memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, "/admin")
 
-# دوال التنظيف
-def cleanup_old_data():
-    """تنظيف البيانات القديمة"""
-    while True:
+@bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'audio', 'document'])
+@require_subscription
+def handle_all_messages(message):
+    user_id = message.from_user.id
+    username = message.from_user.username or "بدون معرف"
+    first_name = message.from_user.first_name or "بدون اسم"
+    
+    if memory.is_banned(user_id):
+        bot.send_message(message.chat.id, "❌ **تم حظرك من استخدام موبي.**\n\nللاستفسار تواصل مع المطور.", parse_mode='Markdown')
+        return
+    
+    if message.content_type == 'text':
+        message_text = message.text
+    else:
+        if message.caption:
+            message_text = f"[{message.content_type.upper()}] {message.caption}"
+        else:
+            message_text = f"[{message.content_type.upper()}] تم إرسال وسائط"
+    
+    memory.update_user_stats(user_id, username, first_name, message_text)
+    
+    if message.content_type == 'text':
+        bot.send_chat_action(message.chat.id, 'typing')
+        
         try:
-            # تنظيف المحادثات القديمة
-            memory.cleanup_old_conversations()
-            
-            # تنظيف الملفات المؤقتة
-            for user_id in list(memory.temp_files.keys()):
-                if datetime.now() - memory.temp_files[user_id] > timedelta(minutes=10):
-                    del memory.temp_files[user_id]
-            
-            logger.info("🧹 تم تنظيف البيانات القديمة")
-            time.sleep(300)  # انتظر 5 دقائق
+            response = AIService.generate_response(user_id, message.text)
+            bot.reply_to(message, response)
         except Exception as e:
-            logger.error(f"❌ خطأ في التنظيف: {e}")
-            time.sleep(60)
+            logger.error(f"❌ خطأ في معالجة الرسالة: {e}")
+            bot.reply_to(message, "⚠️ عذراً، حدث خطأ في المعالجة. جرب مرة أخرى!")
+    else:
+        bot.reply_to(message, "📁 **تم استلام الوسائط بنجاح!**\n\n💫 موبي يدعم الوسائط، لكن الذكاء الاصطناعي يحتاج إلى نص للرد. اكتب سؤالك!", parse_mode='Markdown')
 
-def keep_alive():
-    """الحفاظ على البوت حياً"""
-    while True:
-        try:
-            logger.info("🫀 البوت حي ويعمل...")
-            time.sleep(300)
-        except Exception as e:
-            logger.error(f"❌ خطأ في الحفاظ على الحياة: {e}")
-            time.sleep(60)
-
-def main():
-    logger.info("🚀 بدء تشغيل موبي مع جميع الميزات...")
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback_query(call):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    message_id = call.message.message_id
     
     try:
-        # إزالة أي instance سابقة
-        bot.remove_webhook()
-        time.sleep(2)
+        if call.data == "user_help":
+            handle_help(call.message)
+            bot.answer_callback_query(call.id, "🆘 المساعدة")
+            
+        elif call.data == "user_status":
+            handle_status(call.message)
+            bot.answer_callback_query(call.id, "📊 الحالة")
+            
+        elif call.data == "user_vip":
+            handle_upgrade(call.message)
+            bot.answer_callback_query(call.id, "💎 الترقية")
+            
+        elif call.data == "user_back":
+            send_welcome_message(chat_id, user_id)
+            bot.answer_callback_query(call.id, "🔙 رجوع")
+            
+        elif call.data == "clear_memory":
+            memory.clear_conversation(user_id)
+            bot.answer_callback_query(call.id, "🗑️ تم مسح الذاكرة")
+            bot.send_message(chat_id, "✅ **تم مسح الذاكرة بنجاح!**\n\n💫 يمكنك البدء بمحادثة جديدة.", parse_mode='Markdown')
+            
+        elif call.data == "check_subscription":
+            if check_subscription(user_id):
+                bot.answer_callback_query(call.id, "✅ تم الاشتراك!")
+                send_welcome_message(chat_id, user_id)
+            else:
+                bot.answer_callback_query(call.id, "❌ لم تشترك بعد!")
+                
+        elif call.data.startswith("admin_"):
+            if not memory.is_admin(user_id):
+                bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!")
+                return
+                
+            if call.data == "admin_stats":
+                total_users = memory.get_total_users()
+                active_today = memory.get_active_today()
+                total_vip = len(memory.vip_users)
+                total_admins = len(memory.admins)
+                total_banned = len(memory.banned_users)
+                
+                stats_text = f"""
+📊 **إحصائيات متقدمة - موبي**
+
+👥 **المستخدمين:** {total_users}
+🔄 **النشط اليوم:** {active_today}
+🌟 **VIP:** {total_vip}
+🛡️ **المشرفين:** {total_admins}
+🚫 **المحظورين:** {total_banned}
+
+💬 **الرسائل اليوم:** جاري العد...
+⚡ **أداء النظام:** ممتاز
+                """
+                bot.edit_message_text(
+                    stats_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=create_admin_panel(),
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "📊 الإحصائيات")
+                
+            elif call.data == "admin_users":
+                users_text = f"👥 **آخر 10 مستخدمين:**\n\n"
+                recent_users = list(memory.user_stats.items())[-10:]
+                
+                for user_id, stats in recent_users:
+                    status = "🛡️" if memory.is_admin(user_id) else "🌟" if memory.is_vip(user_id) else "🔓"
+                    users_text += f"{status} {stats.get('first_name', 'بدون اسم')} (@{stats.get('username', 'بدون معرف')})\n"
+                    users_text += f"   📨 {stats.get('message_count', 0)} رسالة | 🎯 {stats.get('points', 0)} نقطة\n\n"
+                
+                bot.edit_message_text(
+                    users_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=create_admin_panel(),
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "👥 المستخدمين")
+                
+            elif call.data == "admin_manage":
+                admins_list = memory.get_admins_list()
+                admins_text = "🛡️ **قائمة المشرفين:**\n\n"
+                
+                for admin in admins_list:
+                    admins_text += f"👑 {admin['first_name']} (@{admin['username']})\n"
+                    admins_text += f"   📨 {admin['message_count']} رسالة | 🎯 {admin['points']} نقطة\n\n"
+                
+                keyboard = InlineKeyboardMarkup()
+                add_admin_btn = InlineKeyboardButton("➕ إضافة مشرف", callback_data="add_admin")
+                remove_admin_btn = InlineKeyboardButton("➖ إزالة مشرف", callback_data="remove_admin")
+                back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+                keyboard.add(add_admin_btn, remove_admin_btn)
+                keyboard.add(back_btn)
+                
+                bot.edit_message_text(
+                    admins_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "🛡️ المشرفين")
+                
+            elif call.data == "admin_vip":
+                vip_list = memory.get_vip_list()
+                vip_text = "🌟 **قائمة VIP:**\n\n"
+                
+                for vip in vip_list:
+                    vip_text += f"💎 {vip['first_name']} (@{vip['username']})\n"
+                    vip_text += f"   📨 {vip['message_count']} رسالة | 🎯 {vip['points']} نقطة\n\n"
+                
+                keyboard = InlineKeyboardMarkup()
+                add_vip_btn = InlineKeyboardButton("➕ إضافة VIP", callback_data="add_vip")
+                remove_vip_btn = InlineKeyboardButton("➖ إزالة VIP", callback_data="remove_vip")
+                back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+                keyboard.add(add_vip_btn, remove_vip_btn)
+                keyboard.add(back_btn)
+                
+                bot.edit_message_text(
+                    vip_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "🌟 VIP")
+                
+            elif call.data == "admin_broadcast":
+                broadcast_text = "📢 **نظام البث:**\n\n"
+                broadcast_text += "يمكنك إرسال رسالة لجميع المستخدمين:\n"
+                broadcast_text += "• 📝 نص\n• 🖼️ صورة\n• 🎥 فيديو\n• 🎵 صوت\n• 📄 ملف\n"
+                
+                bot.edit_message_text(
+                    broadcast_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=create_broadcast_menu(),
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "📢 البث")
+                
+            elif call.data == "admin_ban":
+                banned_text = "🚫 **إدارة المحظورين:**\n\n"
+                banned_text += f"عدد المحظورين: {len(memory.banned_users)}\n\n"
+                
+                keyboard = InlineKeyboardMarkup()
+                ban_user_btn = InlineKeyboardButton("🚫 حظر مستخدم", callback_data="ban_user")
+                unban_user_btn = InlineKeyboardButton("✅ فك حظر", callback_data="unban_user")
+                back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+                keyboard.add(ban_user_btn, unban_user_btn)
+                keyboard.add(back_btn)
+                
+                bot.edit_message_text(
+                    banned_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "🚫 الحظر")
+                
+            elif call.data == "admin_points":
+                points_text = "🎯 **نظام النقاط:**\n\n"
+                points_text += "إدارة نقاط المستخدمين:\n"
+                points_text += "• ➕ إضافة نقاط\n• ➖ نزع نقاط\n• 📤 إرسال لمستخدم\n"
+                
+                bot.edit_message_text(
+                    points_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=create_points_menu(),
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "🎯 النقاط")
+                
+            elif call.data == "admin_settings":
+                settings_text = f"""
+⚙️ **إعدادات موبي:**
+
+📢 **القناة:** {memory.settings.get('required_channel', 'غير معين')}
+🔐 **الاشتراك:** {'مفعل' if memory.settings.get('subscription_enabled', False) else 'معطل'}
+💬 **الرسائل المجانية:** {memory.settings.get('free_messages', 50)}
+🎊 **الترحيب:** {'مفعل' if any([memory.settings.get('welcome_text'), memory.settings.get('welcome_photo'), memory.settings.get('welcome_video')]) else 'معطل'}
+
+⚡ **اختر الإعداد الذي تريد تعديله:**
+                """
+                bot.edit_message_text(
+                    settings_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=create_settings_menu(),
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "⚙️ الإعدادات")
+                
+            elif call.data == "admin_back":
+                handle_admin(call.message)
+                bot.answer_callback_query(call.id, "🔙 رجوع")
+                
+        elif call.data.startswith("settings_"):
+            if not memory.is_admin(user_id):
+                bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!")
+                return
+                
+            if call.data == "settings_channel":
+                msg = bot.send_message(chat_id, "📢 **إعداد القناة:**\n\nأرسل معرف القناة (مثال: @channel_username)", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_channel_setting)
+                bot.answer_callback_query(call.id, "📢 القناة")
+                
+            elif call.data == "settings_subscription":
+                current_status = memory.settings.get('subscription_enabled', False)
+                memory.settings['subscription_enabled'] = not current_status
+                memory.save_settings()
+                
+                status_text = "مفعل" if memory.settings['subscription_enabled'] else "معطل"
+                bot.answer_callback_query(call.id, f"🔐 الاشتراك: {status_text}")
+                bot.send_message(chat_id, f"✅ **تم {'تفعيل' if memory.settings['subscription_enabled'] else 'تعطيل'} الاشتراك الإجباري**", parse_mode='Markdown')
+                
+            elif call.data == "settings_messages":
+                msg = bot.send_message(chat_id, "💬 **عدد الرسائل المجانية:**\n\nأرسل الرقم الجديد (مثال: 50)", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_messages_setting)
+                bot.answer_callback_query(call.id, "💬 الرسائل")
+                
+            elif call.data == "settings_welcome":
+                welcome_text = "🎊 **إعدادات الترحيب:**\n\n"
+                welcome_text += "يمكنك إعداد:\n"
+                welcome_text += "• 📝 نص ترحيب\n• 🖼️ صورة ترحيب\n• 🎥 فيديو ترحيب\n• 🎵 صوت ترحيب\n• 📄 ملف ترحيب\n"
+                
+                bot.edit_message_text(
+                    welcome_text,
+                    chat_id,
+                    message_id,
+                    reply_markup=create_welcome_menu(),
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id, "🎊 الترحيب")
+                
+        elif call.data.startswith("welcome_"):
+            if not memory.is_admin(user_id):
+                bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!")
+                return
+                
+            if call.data == "welcome_text":
+                msg = bot.send_message(chat_id, "📝 **نص الترحيب:**\n\nأرسل النص الجديد للترحيب", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_welcome_text)
+                bot.answer_callback_query(call.id, "📝 النص")
+                
+            elif call.data == "welcome_photo":
+                msg = bot.send_message(chat_id, "🖼️ **صورة الترحيب:**\n\nأرسل الصورة الجديدة للترحيب", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_welcome_photo)
+                bot.answer_callback_query(call.id, "🖼️ الصورة")
+                
+            elif call.data == "welcome_video":
+                msg = bot.send_message(chat_id, "🎥 **فيديو الترحيب:**\n\nأرسل الفيديو الجديد للترحيب", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_welcome_video)
+                bot.answer_callback_query(call.id, "🎥 الفيديو")
+                
+            elif call.data == "welcome_audio":
+                msg = bot.send_message(chat_id, "🎵 **صوت الترحيب:**\n\nأرسل الملف الصوتي الجديد للترحيب", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_welcome_audio)
+                bot.answer_callback_query(call.id, "🎵 الصوت")
+                
+            elif call.data == "welcome_document":
+                msg = bot.send_message(chat_id, "📄 **ملف الترحيب:**\n\nأرسل الملف الجديد للترحيب", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_welcome_document)
+                bot.answer_callback_query(call.id, "📄 الملف")
+                
+        elif call.data.startswith("broadcast_"):
+            if not memory.is_admin(user_id):
+                bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!")
+                return
+                
+            if call.data == "broadcast_text":
+                msg = bot.send_message(chat_id, "📝 **بث نصي:**\n\nأرسل النص الذي تريد بثه لجميع المستخدمين", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_broadcast_text)
+                bot.answer_callback_query(call.id, "📝 النص")
+                
+            elif call.data == "broadcast_photo":
+                msg = bot.send_message(chat_id, "🖼️ **بث صورة:**\n\nأرسل الصورة مع التسمية التوضيحية للبث", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_broadcast_photo)
+                bot.answer_callback_query(call.id, "🖼️ الصورة")
+                
+            elif call.data == "broadcast_video":
+                msg = bot.send_message(chat_id, "🎥 **بث فيديو:**\n\nأرسل الفيديو مع التسمية التوضيحية للبث", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_broadcast_video)
+                bot.answer_callback_query(call.id, "🎥 الفيديو")
+                
+            elif call.data == "broadcast_audio":
+                msg = bot.send_message(chat_id, "🎵 **بث صوت:**\n\nأرسل الملف الصوتي مع التسمية التوضيحية للبث", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_broadcast_audio)
+                bot.answer_callback_query(call.id, "🎵 الصوت")
+                
+            elif call.data == "broadcast_document":
+                msg = bot.send_message(chat_id, "📄 **بث ملف:**\n\nأرسل الملف مع التسمية التوضيحية للبث", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_broadcast_document)
+                bot.answer_callback_query(call.id, "📄 الملف")
+                
+        elif call.data.startswith("add_") or call.data.startswith("remove_"):
+            if not memory.is_admin(user_id):
+                bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!")
+                return
+                
+            if call.data == "add_admin":
+                msg = bot.send_message(chat_id, "🛡️ **إضافة مشرف:**\n\nأرسل معرف المستخدم (user_id) للإضافة", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_add_admin)
+                bot.answer_callback_query(call.id, "➕ مشرف")
+                
+            elif call.data == "remove_admin":
+                msg = bot.send_message(chat_id, "🛡️ **إزالة مشرف:**\n\nأرسل معرف المستخدم (user_id) للإزالة", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_remove_admin)
+                bot.answer_callback_query(call.id, "➖ مشرف")
+                
+            elif call.data == "add_vip":
+                msg = bot.send_message(chat_id, "🌟 **إضافة VIP:**\n\nأرسل معرف المستخدم (user_id) للإضافة", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_add_vip)
+                bot.answer_callback_query(call.id, "➕ VIP")
+                
+            elif call.data == "remove_vip":
+                msg = bot.send_message(chat_id, "🌟 **إزالة VIP:**\n\nأرسل معرف المستخدم (user_id) للإزالة", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_remove_vip)
+                bot.answer_callback_query(call.id, "➖ VIP")
+                
+            elif call.data == "ban_user":
+                msg = bot.send_message(chat_id, "🚫 **حظر مستخدم:**\n\nأرسل معرف المستخدم (user_id) للحظر", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_ban_user)
+                bot.answer_callback_query(call.id, "🚫 حظر")
+                
+            elif call.data == "unban_user":
+                msg = bot.send_message(chat_id, "✅ **فك حظر:**\n\nأرسل معرف المستخدم (user_id) لفك الحظر", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_unban_user)
+                bot.answer_callback_query(call.id, "✅ فك حظر")
+                
+            elif call.data == "add_points":
+                msg = bot.send_message(chat_id, "➕ **إضافة نقاط:**\n\nأرسل معرف المستخدم وعدد النقاط (مثال: 123456 100)", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_add_points)
+                bot.answer_callback_query(call.id, "➕ نقاط")
+                
+            elif call.data == "remove_points":
+                msg = bot.send_message(chat_id, "➖ **نزع نقاط:**\n\nأرسل معرف المستخدم وعدد النقاط (مثال: 123456 50)", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_remove_points)
+                bot.answer_callback_query(call.id, "➖ نقاط")
+                
+            elif call.data == "send_to_user":
+                msg = bot.send_message(chat_id, "📤 **إرسال لمستخدم:**\n\nأرسل معرف المستخدم والرسالة (مثال: 123456 مرحبا!)", parse_mode='Markdown')
+                bot.register_next_step_handler(msg, process_send_to_user)
+                bot.answer_callback_query(call.id, "📤 إرسال")
+                
+    except Exception as e:
+        logger.error(f"❌ خطأ في معالجة الاستدعاء: {e}")
+        bot.answer_callback_query(call.id, "❌ حدث خطأ!")
+
+# دوال معالجة الإعدادات
+def process_channel_setting(message):
+    try:
+        channel_username = message.text.strip()
+        if not channel_username.startswith('@'):
+            channel_username = '@' + channel_username
+            
+        memory.settings['required_channel'] = channel_username
+        memory.save_settings()
         
-        # اختبار النظام
+        bot.send_message(message.chat.id, f"✅ **تم تعيين القناة:** {channel_username}", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في تعيين القناة: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في تعيين القناة!**", parse_mode='Markdown')
+
+def process_messages_setting(message):
+    try:
+        new_limit = int(message.text.strip())
+        memory.settings['free_messages'] = new_limit
+        memory.save_settings()
+        
+        # تحديث حدود المستخدمين الحاليين
+        for user_id in memory.user_stats:
+            if not memory.is_vip(user_id) and not memory.is_admin(user_id):
+                memory.user_stats[user_id]['message_limit'] = new_limit
+        memory.save_user_stats()
+        
+        bot.send_message(message.chat.id, f"✅ **تم تعيين الرسائل المجانية:** {new_limit}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال رقم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في تعيين الرسائل: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في تعيين الرسائل!**", parse_mode='Markdown')
+
+def process_welcome_text(message):
+    try:
+        welcome_text = message.text
+        memory.settings['welcome_text'] = welcome_text
+        memory.save_settings()
+        
+        bot.send_message(message.chat.id, "✅ **تم حفظ نص الترحيب!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في حفظ نص الترحيب: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في حفظ النص!**", parse_mode='Markdown')
+
+def process_welcome_photo(message):
+    try:
+        if message.content_type == 'photo':
+            file_id = message.photo[-1].file_id
+            memory.settings['welcome_photo'] = file_id
+            memory.save_settings()
+            bot.send_message(message.chat.id, "✅ **تم حفظ صورة الترحيب!**", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال صورة!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في حفظ صورة الترحيب: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في حفظ الصورة!**", parse_mode='Markdown')
+
+def process_welcome_video(message):
+    try:
+        if message.content_type == 'video':
+            file_id = message.video.file_id
+            memory.settings['welcome_video'] = file_id
+            memory.save_settings()
+            bot.send_message(message.chat.id, "✅ **تم حفظ فيديو الترحيب!**", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال فيديو!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في حفظ فيديو الترحيب: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في حفظ الفيديو!**", parse_mode='Markdown')
+
+def process_welcome_audio(message):
+    try:
+        if message.content_type == 'audio':
+            file_id = message.audio.file_id
+            memory.settings['welcome_audio'] = file_id
+            memory.save_settings()
+            bot.send_message(message.chat.id, "✅ **تم حفظ صوت الترحيب!**", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال ملف صوتي!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في حفظ صوت الترحيب: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في حفظ الصوت!**", parse_mode='Markdown')
+
+def process_welcome_document(message):
+    try:
+        if message.content_type == 'document':
+            file_id = message.document.file_id
+            memory.settings['welcome_document'] = file_id
+            memory.save_settings()
+            bot.send_message(message.chat.id, "✅ **تم حفظ ملف الترحيب!**", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال ملف!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في حفظ ملف الترحيب: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في حفظ الملف!**", parse_mode='Markdown')
+
+# دوال معالجة البث
+def process_broadcast_text(message):
+    try:
+        broadcast_text = message.text
+        users = list(memory.user_stats.keys())
+        success_count = 0
+        fail_count = 0
+        
+        progress_msg = bot.send_message(message.chat.id, f"📤 **جاري البث...**\n\n👥 المستهدفين: {len(users)}", parse_mode='Markdown')
+        
+        for user_id in users:
+            try:
+                if memory.is_banned(user_id):
+                    continue
+                    
+                bot.send_message(user_id, broadcast_text, parse_mode='Markdown')
+                success_count += 1
+                time.sleep(0.1)  # تجنب التحميل الزائد
+                
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"❌ خطأ في البث للمستخدم {user_id}: {e}")
+        
+        bot.edit_message_text(
+            f"✅ **تم البث بنجاح!**\n\n✅ الناجح: {success_count}\n❌ الفاشل: {fail_count}",
+            message.chat.id,
+            progress_msg.message_id,
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.error(f"❌ خطأ في البث النصي: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في البث!**", parse_mode='Markdown')
+
+def process_broadcast_photo(message):
+    try:
+        if message.content_type == 'photo':
+            file_id = message.photo[-1].file_id
+            caption = message.caption or ""
+            users = list(memory.user_stats.keys())
+            success_count = 0
+            fail_count = 0
+            
+            progress_msg = bot.send_message(message.chat.id, f"📤 **جاري بث الصورة...**\n\n👥 المستهدفين: {len(users)}", parse_mode='Markdown')
+            
+            for user_id in users:
+                try:
+                    if memory.is_banned(user_id):
+                        continue
+                        
+                    bot.send_photo(user_id, file_id, caption=caption, parse_mode='Markdown')
+                    success_count += 1
+                    time.sleep(0.1)
+                    
+                except Exception as e:
+                    fail_count += 1
+                    logger.error(f"❌ خطأ في بث الصورة للمستخدم {user_id}: {e}")
+            
+            bot.edit_message_text(
+                f"✅ **تم بث الصورة بنجاح!**\n\n✅ الناجح: {success_count}\n❌ الفاشل: {fail_count}",
+                message.chat.id,
+                progress_msg.message_id,
+                parse_mode='Markdown'
+            )
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال صورة!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في بث الصورة: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في البث!**", parse_mode='Markdown')
+
+def process_broadcast_video(message):
+    try:
+        if message.content_type == 'video':
+            file_id = message.video.file_id
+            caption = message.caption or ""
+            users = list(memory.user_stats.keys())
+            success_count = 0
+            fail_count = 0
+            
+            progress_msg = bot.send_message(message.chat.id, f"📤 **جاري بث الفيديو...**\n\n👥 المستهدفين: {len(users)}", parse_mode='Markdown')
+            
+            for user_id in users:
+                try:
+                    if memory.is_banned(user_id):
+                        continue
+                        
+                    bot.send_video(user_id, file_id, caption=caption, parse_mode='Markdown')
+                    success_count += 1
+                    time.sleep(0.1)
+                    
+                except Exception as e:
+                    fail_count += 1
+                    logger.error(f"❌ خطأ في بث الفيديو للمستخدم {user_id}: {e}")
+            
+            bot.edit_message_text(
+                f"✅ **تم بث الفيديو بنجاح!**\n\n✅ الناجح: {success_count}\n❌ الفاشل: {fail_count}",
+                message.chat.id,
+                progress_msg.message_id,
+                parse_mode='Markdown'
+            )
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال فيديو!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في بث الفيديو: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في البث!**", parse_mode='Markdown')
+
+def process_broadcast_audio(message):
+    try:
+        if message.content_type == 'audio':
+            file_id = message.audio.file_id
+            caption = message.caption or ""
+            users = list(memory.user_stats.keys())
+            success_count = 0
+            fail_count = 0
+            
+            progress_msg = bot.send_message(message.chat.id, f"📤 **جاري بث الصوت...**\n\n👥 المستهدفين: {len(users)}", parse_mode='Markdown')
+            
+            for user_id in users:
+                try:
+                    if memory.is_banned(user_id):
+                        continue
+                        
+                    bot.send_audio(user_id, file_id, caption=caption, parse_mode='Markdown')
+                    success_count += 1
+                    time.sleep(0.1)
+                    
+                except Exception as e:
+                    fail_count += 1
+                    logger.error(f"❌ خطأ في بث الصوت للمستخدم {user_id}: {e}")
+            
+            bot.edit_message_text(
+                f"✅ **تم بث الصوت بنجاح!**\n\n✅ الناجح: {success_count}\n❌ الفاشل: {fail_count}",
+                message.chat.id,
+                progress_msg.message_id,
+                parse_mode='Markdown'
+            )
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال ملف صوتي!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في بث الصوت: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في البث!**", parse_mode='Markdown')
+
+def process_broadcast_document(message):
+    try:
+        if message.content_type == 'document':
+            file_id = message.document.file_id
+            caption = message.caption or ""
+            users = list(memory.user_stats.keys())
+            success_count = 0
+            fail_count = 0
+            
+            progress_msg = bot.send_message(message.chat.id, f"📤 **جاري بث الملف...**\n\n👥 المستهدفين: {len(users)}", parse_mode='Markdown')
+            
+            for user_id in users:
+                try:
+                    if memory.is_banned(user_id):
+                        continue
+                        
+                    bot.send_document(user_id, file_id, caption=caption, parse_mode='Markdown')
+                    success_count += 1
+                    time.sleep(0.1)
+                    
+                except Exception as e:
+                    fail_count += 1
+                    logger.error(f"❌ خطأ في بث الملف للمستخدم {user_id}: {e}")
+            
+            bot.edit_message_text(
+                f"✅ **تم بث الملف بنجاح!**\n\n✅ الناجح: {success_count}\n❌ الفاشل: {fail_count}",
+                message.chat.id,
+                progress_msg.message_id,
+                parse_mode='Markdown'
+            )
+        else:
+            bot.send_message(message.chat.id, "❌ **الرجاء إرسال ملف!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في بث الملف: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في البث!**", parse_mode='Markdown')
+
+# دوال إدارة المستخدمين
+def process_add_admin(message):
+    try:
+        user_id = int(message.text.strip())
+        username = message.from_user.username or "بدون معرف"
+        first_name = message.from_user.first_name or "بدون اسم"
+        
+        if memory.add_admin(user_id, username, first_name):
+            bot.send_message(message.chat.id, f"✅ **تمت إضافة المشرف:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"⚠️ **المستخدم مشرف بالفعل:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في إضافة المشرف: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الإضافة!**", parse_mode='Markdown')
+
+def process_remove_admin(message):
+    try:
+        user_id = int(message.text.strip())
+        
+        if memory.remove_admin(user_id):
+            bot.send_message(message.chat.id, f"✅ **تمت إزالة المشرف:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"⚠️ **المستخدم ليس مشرفاً:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في إزالة المشرف: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الإزالة!**", parse_mode='Markdown')
+
+def process_add_vip(message):
+    try:
+        user_id = int(message.text.strip())
+        username = message.from_user.username or "بدون معرف"
+        first_name = message.from_user.first_name or "بدون اسم"
+        
+        if memory.add_vip(user_id, username, first_name):
+            bot.send_message(message.chat.id, f"✅ **تمت إضافة VIP:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"⚠️ **المستخدم VIP بالفعل:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في إضافة VIP: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الإضافة!**", parse_mode='Markdown')
+
+def process_remove_vip(message):
+    try:
+        user_id = int(message.text.strip())
+        
+        if memory.remove_vip(user_id):
+            bot.send_message(message.chat.id, f"✅ **تمت إزالة VIP:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"⚠️ **المستخدم ليس VIP:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في إزالة VIP: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الإزالة!**", parse_mode='Markdown')
+
+def process_ban_user(message):
+    try:
+        user_id = int(message.text.strip())
+        username = message.from_user.username or "بدون معرف"
+        first_name = message.from_user.first_name or "بدون اسم"
+        
+        if memory.ban_user(user_id, username, first_name):
+            bot.send_message(message.chat.id, f"✅ **تم حظر المستخدم:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"⚠️ **المستخدم محظور بالفعل:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في حظر المستخدم: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الحظر!**", parse_mode='Markdown')
+
+def process_unban_user(message):
+    try:
+        user_id = int(message.text.strip())
+        
+        if memory.unban_user(user_id):
+            bot.send_message(message.chat.id, f"✅ **تم فك حظر المستخدم:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"⚠️ **المستخدم غير محظور:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في فك حظر المستخدم: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في فك الحظر!**", parse_mode='Markdown')
+
+def process_add_points(message):
+    try:
+        parts = message.text.strip().split()
+        if len(parts) != 2:
+            bot.send_message(message.chat.id, "❌ **الصيغة غير صحيحة!**\n\nاستخدم: user_id points", parse_mode='Markdown')
+            return
+            
+        user_id = int(parts[0])
+        points = int(parts[1])
+        
+        if memory.add_points(user_id, points):
+            bot.send_message(message.chat.id, f"✅ **تم إضافة {points} نقطة للمستخدم:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"❌ **المستخدم غير موجود:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال أرقام صحيحة!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في إضافة النقاط: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الإضافة!**", parse_mode='Markdown')
+
+def process_remove_points(message):
+    try:
+        parts = message.text.strip().split()
+        if len(parts) != 2:
+            bot.send_message(message.chat.id, "❌ **الصيغة غير صحيحة!**\n\nاستخدم: user_id points", parse_mode='Markdown')
+            return
+            
+        user_id = int(parts[0])
+        points = int(parts[1])
+        
+        if memory.remove_points(user_id, points):
+            bot.send_message(message.chat.id, f"✅ **تم نزع {points} نقطة من المستخدم:** {user_id}", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"❌ **المستخدم غير موجود:** {user_id}", parse_mode='Markdown')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال أرقام صحيحة!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في نزع النقاط: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في النزع!**", parse_mode='Markdown')
+
+def process_send_to_user(message):
+    try:
+        parts = message.text.strip().split(' ', 1)
+        if len(parts) != 2:
+            bot.send_message(message.chat.id, "❌ **الصيغة غير صحيحة!**\n\nاستخدم: user_id message", parse_mode='Markdown')
+            return
+            
+        user_id = int(parts[0])
+        user_message = parts[1]
+        
         try:
-            test_url = f"{AIService.API_URL}?text=test"
-            response = requests.get(test_url, timeout=10)
-            logger.info(f"✅ النظام يعمل: {response.status_code}")
-        except Exception as api_error:
-            logger.warning(f"⚠️ النظام غير متاح: {api_error}")
+            bot.send_message(user_id, f"📨 **رسالة من الإدارة:**\n\n{user_message}", parse_mode='Markdown')
+            bot.send_message(message.chat.id, f"✅ **تم إرسال الرسالة للمستخدم:** {user_id}", parse_mode='Markdown')
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ **فشل إرسال الرسالة للمستخدم:** {user_id}", parse_mode='Markdown')
+            
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ **الرجاء إدخال معرف مستخدم صحيح!**", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال الرسالة: {e}")
+        bot.send_message(message.chat.id, "❌ **خطأ في الإرسال!**", parse_mode='Markdown')
+
+def start_bot():
+    """بدء تشغيل البوت مع التعامل مع الأخطاء"""
+    logger.info("🚀 بدء تشغيل موبي...")
+    
+    try:
+        # اختبار الاتصال
+        bot_info = bot.get_me()
+        logger.info(f"✅ موبي جاهز: @{bot_info.username}")
+        logger.info(f"👑 المطور: {DEVELOPER_USERNAME}")
         
-        logger.info(f"✅ موبي جاهز - المطور: {DEVELOPER_USERNAME}")
-        logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
-        
-        # بدء خيوط الخدمة
-        threading.Thread(target=keep_alive, daemon=True).start()
-        threading.Thread(target=cleanup_old_data, daemon=True).start()
+        # بدء التنظيف التلقائي
+        memory.start_cleanup_thread()
         
         # تشغيل البوت
-        bot.infinity_polling(timeout=60, long_polling_timeout=60, restart_on_change=True)
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
         
     except Exception as e:
-        logger.error(f"❌ خطأ في التشغيل: {e}")
+        logger.error(f"❌ خطأ في تشغيل موبي: {e}")
         time.sleep(10)
-        main()
+        start_bot()  # إعادة التشغيل التلقائي
 
 if __name__ == "__main__":
-    main()
+    start_bot()
