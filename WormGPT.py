@@ -262,6 +262,7 @@ memory = MemorySystem()
 class AdvancedAIService:
     # روابط API متعددة للطاقة القصوى
     APIS = [
+        "https://sii3.top/api/DarkCode.php?text=hello",
         "http://fi8.bot-hosting.net:20163/elostoracode",
         "https://api.deepseek.com/chat/completions",
         "https://api.openai.com/v1/chat/completions"
