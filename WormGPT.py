@@ -34,7 +34,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # معلومات المطور
 DEVELOPER_USERNAME = "@xtt19x"
-DEVELOPER_ID = 6954344202  # ضع الرقم الصحيح هنا
+DEVELOPER_ID = 6954344202
 
 # إعدادات البوت
 BOT_SETTINGS = {
@@ -748,14 +748,13 @@ def handle_start_type(chat_id, user_id, force_text=False):
 @require_subscription
 def handle_start(message):
     try:
-        memory.update_user_stats(
-            message.from_user.id,
-            message.from_user.username or "بدون معرف",
-            message.from_user.first_name or "بدون اسم",
-            "/start"
-        )
+        user_id = message.from_user.id
+        username = message.from_user.username or "بدون معرف"
+        first_name = message.from_user.first_name or "بدون اسم"
         
-        send_welcome_message(message.chat.id, message.from_user.id)
+        memory.update_user_stats(user_id, username, first_name, "/start")
+        
+        send_welcome_message(message.chat.id, user_id)
             
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
@@ -1159,8 +1158,8 @@ def main():
         threading.Thread(target=keep_alive, daemon=True).start()
         threading.Thread(target=cleanup_old_data, daemon=True).start()
         
-        # تشغيل البوت
-        bot.infinity_polling(timeout=60, long_polling_timeout=60, restart_on_change=True)
+        # تشغيل البوت - تم إزالة restart_on_change=True
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
         
     except Exception as e:
         logger.error(f"❌ خطأ في التشغيل: {e}")
