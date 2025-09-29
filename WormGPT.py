@@ -13,64 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import watchdog
 import psutil
 
-# إعداد التسجيل
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-# اختبار التثبيت
-try:
-    import watchdog
-    import psutil
-    print("الكتبات مثبتة بنجاح")
-except ImportError as e:
-    print(f"خطأ في التثبيت: {e}")
-
-from telegram.ext import Application, CommandHandler
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-import os
-import sys
-
-class ChangeHandler(FileSystemEventHandler):
-    def on_modified(self, event):
-        if event.src_path.endswith('.py'):
-            print(f"تم تعديل الملف: {event.src_path}")
-            os.execv(sys.executable, [sys.executable] + sys.argv)
-
-async def start(update, context):
-    await update.message.reply_text('Hello!')
-
-def main():
-    # استخدام Application بدلاً من Updater للإصدارات الحديثة
-    application = Application.builder().token("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4").build()
-    
-    # إضافة handler
-    application.add_handler(CommandHandler("start", start))
-
-    # بدء البوت
-    print("بدء البوت...")
-    application.run_polling()
-
-    # جزء watchdog (لن يتم تنفيذه لأن run_polling() تمنع)
-    event_handler = ChangeHandler()
-    observer = Observer()
-    observer.schedule(event_handler, path='.', recursive=False)
-    observer.start()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
-
-if __name__ == '__main__':
-    main()
 # إعداد التسجيل
 logging.basicConfig(
     level=logging.INFO,
@@ -79,7 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger("موبي_البوت")
 
 # التوكن
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4')
 
 if not BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN غير معروف")
@@ -90,7 +34,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # معلومات المطور
 DEVELOPER_USERNAME = "@xtt19x"
-DEVELOPER_ID = 0000000000
+DEVELOPER_ID = 6954344202  # ضع الرقم الصحيح هنا
 
 # إعدادات البوت
 BOT_SETTINGS = {
@@ -453,7 +397,6 @@ class MemorySystem:
             for user_id in list(self.conversations.keys()):
                 conversation = self.get_user_conversation(user_id)
                 if conversation:
-                    # حذف الرسائل الأقدم من 10 دقائق
                     time_threshold = datetime.now() - timedelta(minutes=10)
                     cleaned_conversation = [
                         msg for msg in conversation 
@@ -468,7 +411,7 @@ memory = MemorySystem()
 
 # نظام الذكاء الاصطناعي
 class AIService:
-    API_URL = "https://sii3.top/api/grok4.php?text=hello"
+    API_URL = "https://sii3.top/api/grok4.php"
     
     @staticmethod
     def generate_response(user_id, user_message):
@@ -817,7 +760,133 @@ def handle_start(message):
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
 
-# ... (جميع الدوال الأخرى تبقى كما هي مع التعديلات البسيطة)
+@bot.message_handler(commands=['help'])
+@require_subscription
+def handle_help(message):
+    help_text = """
+🆘 **مساعدة موبي**
+
+🤖 **كيفية الاستخدام:**
+- فقط اكتب رسالتك وسأرد عليك!
+- يمكنني الإجابة على الأسئلة والشرح والكتابة
+
+🔧 **الأوامر المتاحة:**
+/start - بدء البوت
+/help - هذه المساعدة  
+/status - حالة حسابك
+/upgrade - ترقية إلى VIP
+/memory - إدارة الذاكرة
+/new - بدء محادثة جديدة
+/developer - معلومات المطور
+
+💎 **نظام VIP:**
+- رسائل غير محدودة
+- أولوية في الرد
+- ميزات متقدمة
+
+👑 **المطور:** {DEVELOPER_USERNAME}
+    """.format(DEVELOPER_USERNAME=DEVELOPER_USERNAME)
+    
+    bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['status'])
+@require_subscription
+def handle_status(message):
+    user_id = message.from_user.id
+    username = message.from_user.username or "بدون معرف"
+    first_name = message.from_user.first_name or "بدون اسم"
+    
+    memory.update_user_stats(user_id, username, first_name, "/status")
+    
+    if user_id in memory.user_stats:
+        stats = memory.user_stats[user_id]
+        can_send, status = memory.can_send_message(user_id)
+        
+        status_text = f"""
+📊 **حالة حسابك**
+
+👤 **المستخدم:** {first_name} (@{username})
+🆔 **الرقم:** {user_id}
+
+📈 **الإحصائيات:**
+📝 الرسائل: {stats.get('message_count', 0)}
+🎯 النقاط: {stats.get('points', 0)}
+📅 أول ظهور: {stats.get('first_seen', 'غير معروف')}
+🕒 آخر ظهور: {stats.get('last_seen', 'غير معروف')}
+
+🔓 **الحالة:** {status}
+
+💎 **الصلاحيات:**
+{'🌟 VIP' if memory.is_vip(user_id) else '🔓 عادي'}
+{'🛡️ مشرف' if memory.is_admin(user_id) else '👤 مستخدم'}
+{'🚫 محظور' if memory.is_banned(user_id) else '✅ نشط'}
+        """
+    else:
+        status_text = "❌ لا توجد بيانات عن حسابك."
+    
+    bot.send_message(message.chat.id, status_text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['upgrade'])
+@require_subscription
+def handle_upgrade(message):
+    upgrade_text = f"""
+💎 **ترقية إلى VIP**
+
+مميزات VIP:
+✅ رسائل غير محدودة
+⚡ أولوية في الرد
+🎯 ميزات متقدمة
+🔧 دعم فوري
+
+للترقية تواصل مع المطور:
+{DEVELOPER_USERNAME}
+
+سعر الترقية: مجاني للمستخدمين النشطين
+    """
+    bot.send_message(message.chat.id, upgrade_text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['developer'])
+def handle_developer(message):
+    developer_text = f"""
+👑 **مطور البوت**
+
+{DEVELOPER_USERNAME}
+
+📧 للتواصل والدعم الفني
+💼 طلبات البوتات الخاصة
+🔧 حل المشاكل التقنية
+
+⚡ **موبي - البوت الذكي المتقدم**
+    """
+    bot.send_message(message.chat.id, developer_text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['new'])
+@require_subscription
+def handle_new(message):
+    user_id = message.from_user.id
+    memory.clear_conversation(user_id)
+    bot.send_message(message.chat.id, "🔄 تم بدء محادثة جديدة! يمكنك البدء بالحديث الآن.")
+
+@bot.message_handler(commands=['memory'])
+@require_subscription
+def handle_memory(message):
+    user_id = message.from_user.id
+    conversation = memory.get_user_conversation(user_id)
+    memory_count = len(conversation)
+    
+    memory_text = f"""
+💾 **إدارة الذاكرة**
+
+📊 عدد الرسائل المحفوظة: {memory_count}
+🕒 آخر محادثة: {memory_count} رسالة
+
+🔧 **الخيارات:**
+/new - بدء محادثة جديدة
+/start - العودة للقائمة
+
+💡 **ملاحظة:** الذاكرة تحفظ آخر 15 رسالة للمساعدة في الاستمرارية
+    """
+    bot.send_message(message.chat.id, memory_text, parse_mode='Markdown')
 
 # حالات المستخدم
 broadcast_state = {}
@@ -926,8 +995,6 @@ def handle_all_messages(message):
             welcome_state.pop(user_id, None)
             return
         
-        # ... (بقية معالجات الحالات)
-        
         # معالجة الرسائل العادية
         memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
         
@@ -1022,8 +1089,6 @@ def handle_callback(call):
             welcome_state[user_id] = welcome_type
             bot.send_message(user_id, f"🎉 أرسل {'النص' if welcome_type == 'text' else 'الصورة' if welcome_type == 'photo' else 'الفيديو' if welcome_type == 'video' else 'الصوت'} الترحيبي:")
             bot.answer_callback_query(call.id, f"🎉 ترحيب {welcome_type}")
-    
-    # ... (بقية معالجات الأزرار)
 
 def show_welcome_menu(call):
     welcome_content = memory.settings.get('welcome_content', {})
