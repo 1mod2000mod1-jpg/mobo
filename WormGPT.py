@@ -667,6 +667,23 @@ def create_points_menu():
     
     return keyboard
 
+def create_welcome_settings_menu():
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    text_btn = InlineKeyboardButton("📝 نص ترحيب", callback_data="welcome_text")
+    photo_btn = InlineKeyboardButton("🖼️ صورة ترحيب", callback_data="welcome_photo")
+    video_btn = InlineKeyboardButton("🎥 فيديو ترحيب", callback_data="welcome_video")
+    audio_btn = InlineKeyboardButton("🎵 صوت ترحيب", callback_data="welcome_audio")
+    document_btn = InlineKeyboardButton("📄 ملف ترحيب", callback_data="welcome_document")
+    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")
+    
+    keyboard.add(text_btn, photo_btn)
+    keyboard.add(video_btn, audio_btn)
+    keyboard.add(document_btn)
+    keyboard.add(back_btn)
+    
+    return keyboard
+
 def require_subscription(func):
     def wrapper(message):
         if not memory.settings.get('required_channel') or not memory.settings.get('subscription_enabled', False):
@@ -745,6 +762,7 @@ def send_welcome_message(chat_id, user_id):
                     parse_mode='Markdown'
                 )
                 sent = True
+                logger.info("✅ تم إرسال الفيديو الترحيبي بنجاح")
             except Exception as e:
                 logger.error(f"❌ خطأ في إرسال الفيديو الترحيبي: {e}")
         
@@ -759,6 +777,7 @@ def send_welcome_message(chat_id, user_id):
                     parse_mode='Markdown'
                 )
                 sent = True
+                logger.info("✅ تم إرسال الصورة الترحيبية بنجاح")
             except Exception as e:
                 logger.error(f"❌ خطأ في إرسال الصورة الترحيبية: {e}")
         
@@ -773,6 +792,7 @@ def send_welcome_message(chat_id, user_id):
                     parse_mode='Markdown'
                 )
                 sent = True
+                logger.info("✅ تم إرسال الصوت الترحيبي بنجاح")
             except Exception as e:
                 logger.error(f"❌ خطأ في إرسال الصوت الترحيبي: {e}")
         
@@ -787,6 +807,7 @@ def send_welcome_message(chat_id, user_id):
                     parse_mode='Markdown'
                 )
                 sent = True
+                logger.info("✅ تم إرسال الملف الترحيبي بنجاح")
             except Exception as e:
                 logger.error(f"❌ خطأ في إرسال الملف الترحيبي: {e}")
         
@@ -796,6 +817,7 @@ def send_welcome_message(chat_id, user_id):
                 bot.send_message(chat_id, welcome_text, reply_markup=create_admin_panel(), parse_mode='Markdown')
             else:
                 bot.send_message(chat_id, welcome_text, reply_markup=create_main_menu(), parse_mode='Markdown')
+            logger.info("✅ تم إرسال الترحيب النصي بنجاح")
                 
     except Exception as e:
         logger.error(f"❌ خطأ في إرسال الترحيب: {e}")
@@ -1009,6 +1031,7 @@ vip_state = {}
 settings_state = {}
 points_state = {}
 send_user_state = {}
+welcome_state = {}
 
 @bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'audio', 'document'])
 @require_subscription  
@@ -1022,8 +1045,13 @@ def handle_all_messages(message):
             success_count = 0
             total_users = len(memory.user_stats)
             
+            progress_msg = bot.send_message(user_id, f"📤 **جاري البث...**\n\n👥 المستهدفين: {total_users}\n✅ الناجح: 0\n❌ الفاشل: 0")
+            
             for chat_id in memory.user_stats.keys():
                 try:
+                    if memory.is_banned(chat_id):
+                        continue
+                        
                     if broadcast_type == 'text' and message.text:
                         bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
                     elif broadcast_type == 'photo' and message.photo:
@@ -1035,10 +1063,25 @@ def handle_all_messages(message):
                     elif broadcast_type == 'document' and message.document:
                         bot.send_document(chat_id, message.document.file_id, caption=message.caption or "📢 إشعار من الإدارة")
                     success_count += 1
-                except:
+                    
+                    # تحديث التقدم كل 10 مستخدمين
+                    if success_count % 10 == 0:
+                        try:
+                            bot.edit_message_text(
+                                f"📤 **جاري البث...**\n\n👥 المستهدفين: {total_users}\n✅ الناجح: {success_count}\n❌ الفاشل: {success_count - success_count}",
+                                user_id,
+                                progress_msg.message_id
+                            )
+                        except:
+                            pass
+                            
+                except Exception as e:
+                    logger.error(f"❌ خطأ في البث للمستخدم {chat_id}: {e}")
                     continue
             
-            bot.send_message(user_id, f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم")
+            fail_count = total_users - success_count
+            bot.delete_message(user_id, progress_msg.message_id)
+            bot.send_message(user_id, f"✅ **تم إرسال البث بنجاح!**\n\n✅ الناجح: {success_count}\n❌ الفاشل: {fail_count}")
             broadcast_state.pop(user_id, None)
             return
         
@@ -1070,10 +1113,52 @@ def handle_all_messages(message):
                         bot.send_document(target_user_id, message.document.file_id, caption=message.caption or "📩 رسالة من الإدارة")
                     
                     bot.send_message(user_id, "✅ تم إرسال الرسالة للمستخدم")
-                except:
-                    bot.send_message(user_id, "❌ فشل في إرسال الرسالة!")
+                except Exception as e:
+                    bot.send_message(user_id, f"❌ فشل في إرسال الرسالة! الخطأ: {e}")
                 
                 send_user_state.pop(user_id, None)
+                return
+        
+        # معالجة إعدادات الترحيب
+        if user_id in welcome_state:
+            welcome_type = welcome_state[user_id]['type']
+            
+            if welcome_type == 'text':
+                memory.settings['welcome_text'] = message.text
+                memory.save_settings()
+                bot.send_message(user_id, "✅ **تم حفظ نص الترحيب بنجاح!**\n\n📝 سيتم عرض هذا النص في رسالة الترحيب.")
+                welcome_state.pop(user_id, None)
+                return
+                
+            elif welcome_type == 'photo' and message.photo:
+                memory.settings['welcome_photo'] = message.photo[-1].file_id
+                memory.save_settings()
+                bot.send_message(user_id, "✅ **تم رفع الصورة الترحيبية بنجاح!**\n\n🖼️ سيتم استخدام هذه الصورة في رسالة الترحيب.")
+                welcome_state.pop(user_id, None)
+                return
+                
+            elif welcome_type == 'video' and message.video:
+                memory.settings['welcome_video'] = message.video.file_id
+                memory.save_settings()
+                bot.send_message(user_id, "✅ **تم رفع الفيديو الترحيبي بنجاح!**\n\n🎥 سيتم استخدام هذا الفيديو في رسالة الترحيب.")
+                welcome_state.pop(user_id, None)
+                return
+                
+            elif welcome_type == 'audio' and message.audio:
+                memory.settings['welcome_audio'] = message.audio.file_id
+                memory.save_settings()
+                bot.send_message(user_id, "✅ **تم رفع الصوت الترحيبي بنجاح!**\n\n🎵 سيتم استخدام هذا الصوت في رسالة الترحيب.")
+                welcome_state.pop(user_id, None)
+                return
+                
+            elif welcome_type == 'document' and message.document:
+                memory.settings['welcome_document'] = message.document.file_id
+                memory.save_settings()
+                bot.send_message(user_id, "✅ **تم رفع الملف الترحيبي بنجاح!**\n\n📄 سيتم استخدام هذا الملف في رسالة الترحيب.")
+                welcome_state.pop(user_id, None)
+                return
+            else:
+                bot.send_message(user_id, "❌ **لم يتم استلام الوسائط المطلوبة!**\n\nيرجى إرسال الوسائط المناسبة.")
                 return
         
         # معالجة حالات أخرى
@@ -1331,6 +1416,32 @@ def handle_callback(call):
         bot.send_message(user_id, "🖼️ أرسل الصورة الترحيبية:")
         bot.answer_callback_query(call.id, "🖼️ الصورة الترحيبية")
     
+    # إعدادات الترحيب المتقدمة
+    elif call.data == "welcome_text":
+        welcome_state[user_id] = {'type': 'text'}
+        bot.send_message(user_id, "📝 **أرسل نص الترحيب الجديد:**\n\nيمكنك استخدام التنسيق Markdown لجعل النص أجمل.")
+        bot.answer_callback_query(call.id, "📝 نص ترحيب")
+    
+    elif call.data == "welcome_photo":
+        welcome_state[user_id] = {'type': 'photo'}
+        bot.send_message(user_id, "🖼️ **أرسل الصورة الترحيبية:**\n\nسيتم استخدام هذه الصورة في رسالة الترحيب الرئيسية.")
+        bot.answer_callback_query(call.id, "🖼️ صورة ترحيب")
+    
+    elif call.data == "welcome_video":
+        welcome_state[user_id] = {'type': 'video'}
+        bot.send_message(user_id, "🎥 **أرسل الفيديو الترحيبي:**\n\nسيتم استخدام هذا الفيديو في رسالة الترحيب الرئيسية.")
+        bot.answer_callback_query(call.id, "🎥 فيديو ترحيب")
+    
+    elif call.data == "welcome_audio":
+        welcome_state[user_id] = {'type': 'audio'}
+        bot.send_message(user_id, "🎵 **أرسل الصوت الترحيبي:**\n\nسيتم استخدام هذا الصوت في رسالة الترحيب الرئيسية.")
+        bot.answer_callback_query(call.id, "🎵 صوت ترحيب")
+    
+    elif call.data == "welcome_document":
+        welcome_state[user_id] = {'type': 'document'}
+        bot.send_message(user_id, "📄 **أرسل الملف الترحيبي:**\n\nسيتم استخدام هذا الملف في رسالة الترحيب الرئيسية.")
+        bot.answer_callback_query(call.id, "📄 ملف ترحيب")
+    
     # معالجة المستخدمين
     elif call.data.startswith("view_conversation_"):
         view_user_conversation(call)
@@ -1554,13 +1665,43 @@ def show_settings_menu(call):
 📢 **القناة:** {memory.settings.get('required_channel', 'غير معينة')}
 🔐 **الاشتراك الإجباري:** {'✅ مفعل' if memory.settings.get('subscription_enabled', False) else '❌ معطل'}
 💬 **الرسائل المجانية:** {memory.settings.get('free_messages', 50)}
-🖼️ **الصورة الترحيبية:** {'✅ معينة' if memory.settings.get('welcome_image') else '❌ غير معينة'}
+🎊 **الترحيب المتقدم:** {'✅ مفعل' if any([memory.settings.get('welcome_text'), memory.settings.get('welcome_photo'), memory.settings.get('welcome_video'), memory.settings.get('welcome_audio'), memory.settings.get('welcome_document')]) else '❌ معطل'}
 
 🛠️ **اختر الإعداد الذي تريد تعديله:**
     """
+    
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    channel_btn = InlineKeyboardButton("📢 إدارة القناة", callback_data="settings_channel")
+    subscription_btn = InlineKeyboardButton("🔐 الاشتراك الإجباري", callback_data="settings_subscription")
+    messages_btn = InlineKeyboardButton("💬 عدد الرسائل", callback_data="settings_messages")
+    welcome_btn = InlineKeyboardButton("🎊 الترحيب المتقدم", callback_data="welcome_settings")
+    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+    
+    keyboard.add(channel_btn, subscription_btn)
+    keyboard.add(messages_btn, welcome_btn)
+    keyboard.add(back_btn)
+    
     bot.edit_message_text(settings_text, call.message.chat.id, call.message.message_id,
-                        reply_markup=create_settings_menu(), parse_mode='Markdown')
+                        reply_markup=keyboard, parse_mode='Markdown')
     bot.answer_callback_query(call.id, "⚙️ الإعدادات")
+
+def show_welcome_settings(call):
+    welcome_text = f"""
+🎊 **إعدادات الترحيب المتقدم**
+
+📝 **النص:** {'✅ معين' if memory.settings.get('welcome_text') else '❌ غير معين'}
+🖼️ **الصورة:** {'✅ معينة' if memory.settings.get('welcome_photo') else '❌ غير معينة'}
+🎥 **الفيديو:** {'✅ معين' if memory.settings.get('welcome_video') else '❌ غير معين'}
+🎵 **الصوت:** {'✅ معين' if memory.settings.get('welcome_audio') else '❌ غير معين'}
+📄 **الملف:** {'✅ معين' if memory.settings.get('welcome_document') else '❌ غير معين'}
+
+💡 **سيتم استخدام أول وسائط معينة في الترحيب**
+    """
+    
+    bot.edit_message_text(welcome_text, call.message.chat.id, call.message.message_id,
+                        reply_markup=create_welcome_settings_menu(), parse_mode='Markdown')
+    bot.answer_callback_query(call.id, "🎊 الترحيب المتقدم")
 
 def view_user_conversation(call):
     try:
@@ -1703,6 +1844,11 @@ def remove_points_action(call):
     except Exception as e:
         logger.error(f"❌ خطأ في نزع النقاط: {e}")
 
+# إضافة معالج للترحيب المتقدم
+@bot.callback_query_handler(func=lambda call: call.data == "welcome_settings")
+def handle_welcome_settings(call):
+    show_welcome_settings(call)
+
 # تشغيل البوت مع الحفاظ على الحياة
 def keep_alive():
     while True:
@@ -1740,35 +1886,6 @@ def main():
         import time
         time.sleep(10)
         main()
-def main():
-    logger.info("🚀 بدء تشغيل موبي مع جميع الميزات...")
-    
-    try:
-        bot.remove_webhook()
-        
-        # اختبار النظام
-        try:
-            test_url = f"{AIService.API_URL}?text=test"
-            response = requests.get(test_url, timeout=10)
-            logger.info(f"✅ النظام يعمل: {response.status_code}")
-        except Exception as api_error:
-            logger.warning(f"⚠️ النظام غير متاح: {api_error}")
-        
-        logger.info(f"✅ موبي جاهز - المطور: {DEVELOPER_USERNAME}")
-        logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
-        
-        # بدء خيط الحفاظ على الحياة
-        threading.Thread(target=keep_alive, daemon=True).start()
-        
-        bot.infinity_polling(timeout=60, long_polling_timeout=60)
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في التشغيل: {e}")
-        import time
-        time.sleep(10)
-        main()
 
-if __name__ == "__main__":
-    main()
 if __name__ == "__main__":
     main()
