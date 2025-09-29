@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-موبي الشرير - بوت الذكاء الاصطناعي المتقدم
+موبي الشرير - بوت الذكاء الاصطناعي المتقدم VIP
 """
 
 import os
@@ -17,7 +17,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("موبي_الشرير")
+logger = logging.getLogger("موبي_الشرير_VIP")
 
 # التوكن - هذا فقط المطلوب
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -34,15 +34,23 @@ bot = telebot.TeleBot(BOT_TOKEN)
 DEVELOPER_USERNAME = "@xtt19x"
 DEVELOPER_ID = 6521966233
 
+# قناة الاشتراك الإجباري
+REQUIRED_CHANNEL = "@your_channel_here"  # ضع رابط قناتك هنا
+CHANNEL_LINK = f"https://t.me/{REQUIRED_CHANNEL[1:]}"
+
+# نظام VIP
+VIP_USERS = [DEVELOPER_ID]  # إضافة مستخدمين VIP هنا
+
 # نظام الذاكرة والإحصائيات والإدارة
 class MemorySystem:
     def __init__(self):
-        self.workspace = Path("/tmp/mobi_memory")
+        self.workspace = Path("/tmp/mobi_vip_memory")
         self.workspace.mkdir(exist_ok=True)
         self.conversations = {}
         self.user_stats = self.load_user_stats()
         self.admins = self.load_admins()
         self.banned_users = self.load_banned_users()
+        self.vip_users = self.load_vip_users()
     
     def get_user_file(self, user_id):
         return self.workspace / f"user_{user_id}.json"
@@ -55,6 +63,9 @@ class MemorySystem:
     
     def get_banned_file(self):
         return self.workspace / "banned_users.json"
+    
+    def get_vip_file(self):
+        return self.workspace / "vip_users.json"
     
     def load_user_stats(self):
         """تحميل إحصائيات المستخدمين"""
@@ -92,6 +103,21 @@ class MemorySystem:
                 return []
         return []
     
+    def load_vip_users(self):
+        """تحميل قائمة VIP"""
+        vip_file = self.get_vip_file()
+        if vip_file.exists():
+            try:
+                with open(vip_file, 'r', encoding='utf-8') as f:
+                    vip_users = json.load(f)
+                    # التأكد من أن المطور موجود دائماً في VIP
+                    if DEVELOPER_ID not in vip_users:
+                        vip_users.append(DEVELOPER_ID)
+                    return vip_users
+            except:
+                return [DEVELOPER_ID]
+        return [DEVELOPER_ID]
+    
     def save_user_stats(self):
         """حفظ إحصائيات المستخدمين"""
         stats_file = self.get_stats_file()
@@ -110,6 +136,12 @@ class MemorySystem:
         with open(banned_file, 'w', encoding='utf-8') as f:
             json.dump(self.banned_users, f, ensure_ascii=False, indent=2)
     
+    def save_vip_users(self):
+        """حفظ قائمة VIP"""
+        vip_file = self.get_vip_file()
+        with open(vip_file, 'w', encoding='utf-8') as f:
+            json.dump(self.vip_users, f, ensure_ascii=False, indent=2)
+    
     def update_user_stats(self, user_id, username, first_name, message_text=""):
         """تحديث إحصائيات المستخدم"""
         if user_id not in self.user_stats:
@@ -121,7 +153,9 @@ class MemorySystem:
                 'last_seen': datetime.now().isoformat(),
                 'last_message': message_text[:100] if message_text else "",
                 'is_admin': user_id in self.admins,
-                'is_banned': user_id in self.banned_users
+                'is_banned': user_id in self.banned_users,
+                'is_vip': user_id in self.vip_users,
+                'has_subscribed': False  # سيتم التحقق لاحقاً
             }
         else:
             self.user_stats[user_id]['message_count'] += 1
@@ -130,8 +164,34 @@ class MemorySystem:
                 self.user_stats[user_id]['last_message'] = message_text[:100]
             self.user_stats[user_id]['is_admin'] = user_id in self.admins
             self.user_stats[user_id]['is_banned'] = user_id in self.banned_users
+            self.user_stats[user_id]['is_vip'] = user_id in self.vip_users
         
         self.save_user_stats()
+    
+    def add_vip(self, user_id, username, first_name):
+        """إضافة مستخدم VIP"""
+        if user_id not in self.vip_users:
+            self.vip_users.append(user_id)
+            self.save_vip_users()
+            if user_id in self.user_stats:
+                self.user_stats[user_id]['is_vip'] = True
+            self.update_user_stats(user_id, username, first_name, "تم ترقيته إلى VIP")
+            return True
+        return False
+    
+    def remove_vip(self, user_id):
+        """إزالة مستخدم VIP"""
+        if user_id in self.vip_users and user_id != DEVELOPER_ID:
+            self.vip_users.remove(user_id)
+            self.save_vip_users()
+            if user_id in self.user_stats:
+                self.user_stats[user_id]['is_vip'] = False
+            return True
+        return False
+    
+    def is_vip(self, user_id):
+        """التحقق إذا كان المستخدم VIP"""
+        return user_id in self.vip_users
     
     def add_admin(self, user_id, username, first_name):
         """إضافة مشرف جديد"""
@@ -220,6 +280,20 @@ class MemorySystem:
                 })
         return admins_info
     
+    def get_vip_list(self):
+        """قائمة VIP"""
+        vip_info = []
+        for vip_id in self.vip_users:
+            if vip_id in self.user_stats:
+                stats = self.user_stats[vip_id]
+                vip_info.append({
+                    'id': vip_id,
+                    'username': stats.get('username', 'بدون معرف'),
+                    'first_name': stats.get('first_name', 'بدون اسم'),
+                    'message_count': stats.get('message_count', 0)
+                })
+        return vip_info
+    
     def load_conversation(self, user_id):
         user_file = self.get_user_file(user_id)
         if user_file.exists():
@@ -260,142 +334,198 @@ memory = MemorySystem()
 
 # خدمات الذكاء الاصطناعي المتقدم
 class AdvancedAIService:
-    # روابط API متعددة للطاقة القصوى
-    APIS = [
-    "https://sii3.top/api/DarkCode.php?text=hello",
-    "http://fi8.bot-hosting.net:20163/elostoracode", 
-    "https://api.deepseek.com/chat/completions",
-    "https://api.openai.com/v1/chat/completions"
-]
-
-@staticmethod
-def custom_api_call(message, user_id):
-    """الاتصال بالـ API الخاص واستخراج الرد فقط"""
-    try:
-        # استخدام أول API في القائمة
-        api_url = f"{AdvancedAIService.APIS[0].split('?')[0]}?text={requests.utils.quote(message)}"
-        logger.info(f"🔗 موبي الشرير يتصل بالـAPI: {api_url}")
-        
-        response = requests.get(api_url, timeout=15)
-        
-        if response.status_code == 200:
-            # محاولة الحصول على الرد كـ JSON أولاً
+    # API الأساسي
+    API_URL = "https://sii3.top/api/DarkCode.php"
+    
+    @staticmethod
+    def generate_response(user_id, user_message):
+        """توليد رد باستخدام نظام الذكاء الاصطناعي"""
+        try:
+            # التحقق من الاشتراك أولاً (لغير VIP)
+            if not memory.is_vip(user_id) and not memory.is_admin(user_id):
+                if not check_subscription(user_id):
+                    return None  # سيعيد None إذا لم يكن مشتركاً
+            
+            if memory.is_banned(user_id):
+                return "❌ تم حظرك من استخدام موبي الشرير VIP."
+            
+            memory.add_message(user_id, "user", user_message)
+            
+            # استخدام API الأساسي
             try:
-                data = response.json()
-                # استخراج الرد فقط من المفتاح 'response'
-                ai_response = data.get('response', '')
-                # إذا لم يكن هناك 'response'، جرب 'text'
-                if not ai_response:
-                    ai_response = data.get('text', '')
-            except:
-                # إذا فشل JSON، استخدم النص مباشرة
+                response = AdvancedAIService.primary_api_call(user_message, user_id)
+                if response and len(response.strip()) > 5:
+                    return response
+            except Exception as api_error:
+                logger.warning(f"⚠️ API غير متاح: {api_error}")
+            
+            # استخدام النظام الاحتياطي
+            return AdvancedAIService.smart_fallback(user_message, user_id)
+            
+        except Exception as e:
+            logger.error(f"❌ خطأ في نظام موبي: {e}")
+            return "⚠️ عذراً، نظام موبي يواجه صعوبات. جرب مرة أخرى!"
+    
+    @staticmethod
+    def primary_api_call(message, user_id):
+        """الاتصال بالـ API الأساسي"""
+        try:
+            api_url = f"{AdvancedAIService.API_URL}?text={requests.utils.quote(message)}"
+            logger.info(f"🔗 موبي يتصل بالـAPI: {api_url}")
+            
+            response = requests.get(api_url, timeout=15)
+            
+            if response.status_code == 200:
+                # معالجة الرد
                 ai_response = response.text.strip()
-            
-            # تنظيف الرد من أي معلومات إضافية
-            import re
-            # إذا كان الرد يحتوي على JSON كامل، استخرج قيمة response فقط
-            if '{"date"' in ai_response and '"response"' in ai_response:
-                match = re.search(r'"response":"([^"]*)"', ai_response)
-                if match:
-                    ai_response = match.group(1)
-            
-            # إزالة أي نص عن المطور أو القناة
-            lines = ai_response.split('\n')
-            clean_lines = []
-            for line in lines:
-                if not any(x in line.lower() for x in ['dev:', 'support', 'channel', '@darkaix', 'don\'t forget']):
-                    clean_lines.append(line)
-            ai_response = '\n'.join(clean_lines).strip()
-            
-            # إذا كان الرد فارغاً بعد التنظيف
-            if not ai_response or ai_response.isspace():
-                ai_response = "🔄 موبي الشرير يحتاج إلى مزيد من التفكير... جرب مرة أخرى!"
-            
-            # تنظيف النهائي
-            ai_response = ai_response.replace('\\n', '\n').replace('\\t', '\t')
-            if len(ai_response) > 2000:
-                ai_response = ai_response[:2000] + "..."
-            
-            memory.add_message(user_id, "assistant", ai_response)
-            logger.info(f"✅ موبي الشرير حصل على رد: {ai_response[:100]}...")
-            return ai_response
-        else:
-            raise Exception(f"API error: {response.status_code}")
-            
-    except Exception as e:
-        logger.error(f"❌ خطأ في API موبي الشرير: {e}")
-        raise
+                
+                # تنظيف الرد من JSON إذا كان موجوداً
+                if '{"date"' in ai_response and '"response"' in ai_response:
+                    import re
+                    match = re.search(r'"response":"([^"]+)"', ai_response)
+                    if match:
+                        ai_response = match.group(1)
+                
+                # تنظيف الرد من معلومات المطور
+                lines = ai_response.split('\n')
+                clean_lines = []
+                for line in lines:
+                    if not any(x in line.lower() for x in ['dev:', 'support', 'channel', '@', 'don\'t forget']):
+                        clean_lines.append(line)
+                ai_response = '\n'.join(clean_lines).strip()
+                
+                if not ai_response or ai_response.isspace():
+                    ai_response = "🔄 موبي يفكر... جرب صياغة سؤالك بطريقة أخرى!"
+                
+                # تنظيف النهائي
+                ai_response = ai_response.replace('\\n', '\n').replace('\\t', '\t')
+                if len(ai_response) > 2000:
+                    ai_response = ai_response[:2000] + "..."
+                
+                memory.add_message(user_id, "assistant", ai_response)
+                logger.info(f"✅ موبي رد: {ai_response[:100]}...")
+                return ai_response
+            else:
+                raise Exception(f"API error: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"❌ خطأ في API: {e}")
+            raise
+    
+    @staticmethod
+    def smart_fallback(message, user_id):
+        """نظام احتياطي ذكي"""
+        message_lower = message.lower()
+        
+        responses = {
+            'مرحبا': 'أهلاً! أنا موبي الشرير VIP 🤖! كيف يمكنني مساعدتك؟ 💫',
+            'السلام عليكم': 'وعليكم السلام ورحمة الله وبركاته! موبي VIP جاهز لخدمتك. 🌟',
+            'شكرا': 'العفو! دائماً سعيد بمساعدتك. 😊',
+            'اسمك': 'أنا موبي الشرير VIP! 🤖 الذكاء الاصطناعي المميز!',
+            'مساعدة': 'موبي VIP يمكنه مساعدتك في:\n• الإجابة على الأسئلة\n• الشرح والتوضيح\n• الكتابة والإبداع\n• حل المشكلات\nما الذي تحتاج؟ 🎯',
+            'vip': '🌟 نظام VIP يمنحك صلاحيات متقدمة! تواصل مع المطور.',
+            'مطور': f'المطور: {DEVELOPER_USERNAME} 👨‍💻',
+        }
+        
+        for key, response in responses.items():
+            if key in message_lower:
+                memory.add_message(user_id, "assistant", response)
+                return response
+        
+        import random
+        fallback_responses = [
+            f"🤔 '{message}' - سؤال مثير! دعني أفكر...",
+            f"💭 أحلل سؤالك: '{message}'",
+            f"🎯 رائع! '{message}' - سأستخدم ذكائي للإجابة!",
+        ]
+        
+        response = random.choice(fallback_responses)
+        memory.add_message(user_id, "assistant", response)
+        return response
 
-@staticmethod
-def smart_ai_system(message, user_id):
-    """نظام ذكاء اصطناعي احتياطي ذكي"""
-    message_lower = message.lower()
-    
-    # قاعدة معرفة موسعة لموبي الشرير
-    responses = {
-        'مرحبا': 'أهلاً! أنا موبي الشرير 🤖، الذكاء الاصطناعي المتقدم! كيف يمكنني خدمتك اليوم؟ 💫',
-        'السلام عليكم': 'وعليكم السلام ورحمة الله وبركاته! أنا موبي الشرير جاهز لمساعدتك. 🌟',
-        'شكرا': 'العفو! موبي الشرير دائماً سعيد بمساعدتك. 😊 هل تحتاج شيئاً آخر؟',
-        'اسمك': 'أنا موبي الشرير! 🤖 أقوى ذكاء اصطناعي في المنطقة!',
-        'كيف حالك': 'أنا بخير الحمدلله! موبي الشرير يعمل بأقصى طاقته لخدمتك. ⚡',
-        'مساعدة': 'موبي الشرير يمكنه مساعدتك في:\n• الإجابة على جميع الأسئلة\n• الشرح والتوضيح\n• الكتابة والإبداع\n• حل المشكلات\n• التحليل والاستنتاج\nما الذي تحتاجه؟ 🎯',
-        'مطور': f'مطور موبي الشرير: {DEVELOPER_USERNAME} 👨‍💻',
-        'موبي': 'نعم! أنا موبي الشرير هنا! 🤖 كيف يمكنني مساعدتك؟',
-        'شرير': '😈 أنا شرير في الذكاء فقط! دائماً هنا لمساعدتك بخير.',
-        'ذكاء اصطناعي': '🦾 نعم! أنا موبي الشرير - ذكاء اصطناعي متطور بصلاحيات كاملة!',
-    }
-    
-    # البحث عن رد مبرمج
-    for key, response in responses.items():
-        if key in message_lower:
-            memory.add_message(user_id, "assistant", response)
-            return response
-    
-    # إجابات ذكية ديناميكية
-    smart_responses = [
-        f"🤔 {message} - سؤال مثير! دعني أفكر كموبي الشرير...",
-        f"💭 محادثة عميقة حول '{message}' - موبي الشرير يحلل...",
-        f"🎯 رائع! '{message}' - سأستخدم ذكائي الاصطناعي المتقدم للإجابة!",
-        f"⚡ موبي الشرير يعالج سؤالك: '{message}'",
-    ]
-    
-    import random
-    response = random.choice(smart_responses)
-    memory.add_message(user_id, "assistant", response)
-    return response
+# التحقق من الاشتراك في القناة
+def check_subscription(user_id):
+    """التحقق من اشتراك المستخدم في القناة"""
+    try:
+        chat_member = bot.get_chat_member(REQUIRED_CHANNEL, user_id)
+        if chat_member.status in ['member', 'administrator', 'creator']:
+            # تحديث حالة الاشتراك
+            if user_id in memory.user_stats:
+                memory.user_stats[user_id]['has_subscribed'] = True
+                memory.save_user_stats()
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"❌ خطأ في التحقق من الاشتراك: {e}")
+        return False
 
 # إنشاء أزرار
+def create_subscription_button():
+    """زر الاشتراك الإجباري"""
+    keyboard = InlineKeyboardMarkup()
+    channel_btn = InlineKeyboardButton("📢 اشترك في القناة", url=CHANNEL_LINK)
+    check_btn = InlineKeyboardButton("✅ تحقق من الاشتراك", callback_data="check_subscription")
+    keyboard.add(channel_btn, check_btn)
+    return keyboard
+
 def create_developer_button():
     keyboard = InlineKeyboardMarkup()
-    developer_btn = InlineKeyboardButton("👨‍💻 تواصل مع مطور موبي", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
+    developer_btn = InlineKeyboardButton("👨‍💻 المطور", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
     keyboard.add(developer_btn)
     return keyboard
 
 def create_admin_panel():
     keyboard = InlineKeyboardMarkup(row_width=2)
     
-    stats_btn = InlineKeyboardButton("📊 إحصائيات موبي", callback_data="admin_stats")
-    users_btn = InlineKeyboardButton("👥 مستخدمي موبي", callback_data="admin_users")
-    admins_btn = InlineKeyboardButton("🛡️ مشرفي موبي", callback_data="admin_manage")
-    conversations_btn = InlineKeyboardButton("💬 محادثات موبي", callback_data="admin_conversations")
-    ban_btn = InlineKeyboardButton("🚫 حظر في موبي", callback_data="admin_ban")
-    broadcast_btn = InlineKeyboardButton("📢 بث من موبي", callback_data="admin_broadcast")
+    stats_btn = InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")
+    users_btn = InlineKeyboardButton("👥 المستخدمين", callback_data="admin_users")
+    vip_btn = InlineKeyboardButton("🌟 إدارة VIP", callback_data="admin_vip")
+    broadcast_btn = InlineKeyboardButton("📢 البث", callback_data="admin_broadcast")
+    ban_btn = InlineKeyboardButton("🚫 الحظر", callback_data="admin_ban")
     
     keyboard.add(stats_btn, users_btn)
-    keyboard.add(admins_btn, conversations_btn)
-    keyboard.add(ban_btn, broadcast_btn)
+    keyboard.add(vip_btn, broadcast_btn)
+    keyboard.add(ban_btn)
     
     return keyboard
 
+# معالجة الاشتراك الإجباري
+def require_subscription(func):
+    """ديكورator للتحقق من الاشتراك"""
+    def wrapper(message):
+        user_id = message.from_user.id
+        
+        # المستخدمين VIP والمشرفين معفيين
+        if memory.is_vip(user_id) or memory.is_admin(user_id):
+            return func(message)
+        
+        # التحقق من الاشتراك
+        if not check_subscription(user_id):
+            subscription_msg = f"""
+📢 **اشتراك إجباري مطلوب!**
+
+🔐 للوصول إلى موبي الشرير VIP، يجب الاشتراك في قناتنا أولاً:
+
+{REQUIRED_CHANNEL}
+
+✅ بعد الاشتراك، اضغط على زر "تحقق من الاشتراك"
+            """
+            bot.send_message(
+                message.chat.id, 
+                subscription_msg, 
+                reply_markup=create_subscription_button(),
+                parse_mode='Markdown'
+            )
+            return
+        return func(message)
+    return wrapper
+
 # الأوامر الأساسية
 @bot.message_handler(commands=['start'])
+@require_subscription
 def handle_start(message):
-    """بدء المحادثة مع موبي الشرير"""
+    """بدء المحادثة"""
     try:
-        if memory.is_banned(message.from_user.id):
-            bot.send_message(message.chat.id, "❌ تم حظرك من استخدام موبي الشرير. تواصل مع المطور لإلغاء الحظر.")
-            return
-        
         memory.update_user_stats(
             message.from_user.id,
             message.from_user.username or "بدون معرف",
@@ -403,28 +533,29 @@ def handle_start(message):
             "/start"
         )
         
+        user_status = ""
+        if memory.is_vip(message.from_user.id):
+            user_status = "🌟 **أنت مستخدم VIP**\n"
+        elif memory.is_admin(message.from_user.id):
+            user_status = "🛡️ **أنت مشرف**\n"
+        
         welcome_text = f"""
-🤖 **مرحباً! أنا موبي الشرير - الذكاء الاصطناعي المتقدم**
+🤖 **مرحباً! أنا موبي الشرير VIP**
 
-⚡ **قوة موبي الشرير:**
-✅ مدعوم بأنظمة ذكاء اصطناعي متطورة
-✅ ذاكرة محادثات ذكية متقدمة
-✅ دعم كامل للعربية والإنجليزية
-✅ استجابات فائقة السرعة والذكاء
-✅ صلاحيات مطور كاملة
+{user_status}
+⚡ **المميزات:**
+✅ ذكاء اصطناعي متقدم
+✅ نظام VIP حصري
+✅ سرعة فائقة
+✅ دعم عربي كامل
 
-🎯 **أوامر موبي الشرير:**
-/start - بدء المحادثة مع موبي
-/help - مساعدة موبي الشرير
-/new - محادثة جديدة مع موبي
-/memory - ذاكرة موبي
-/status - حالة نظام موبي
-/developer - مطور موبي
-/admin - لوحة تحكم موبي (للمطور)
+💡 **الأوامر:**
+/start - بدء المحادثة
+/help - المساعدة  
+/vip - معلومات VIP
+/status - الحالة
 
-👨‍💻 **مطور موبي الشرير:** {DEVELOPER_USERNAME}
-
-💬 **اكتب أي سؤال وسأجيبك بقوة الذكاء الاصطناعي المتقدم!**
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
         """
         
         if memory.is_admin(message.from_user.id):
@@ -432,494 +563,291 @@ def handle_start(message):
         else:
             bot.send_message(message.chat.id, welcome_text, reply_markup=create_developer_button(), parse_mode='Markdown')
             
-        logger.info(f"✅ بدء محادثة مع {message.from_user.first_name} في موبي الشرير")
-        
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
 
 @bot.message_handler(commands=['help'])
+@require_subscription
 def handle_help(message):
-    """مساعدة موبي الشرير"""
+    """المساعدة"""
     help_text = f"""
-🆘 **مساعدة موبي الشرير**
+🆘 **مساعدة موبي الشرير VIP**
 
-📋 **أوامر نظام موبي:**
-/start - بدء المحادثة مع موبي
-/help - عرض رسالة المساعدة
-/new - بدء محادثة جديدة
-/memory - إدارة ذاكرة موبي
-/status - حالة نظام موبي
-/developer - معلومات مطور موبي
+📋 **الأوامر:**
+/start - بدء المحادثة
+/help - المساعدة
+/vip - معلومات VIP
+/status - حالة النظام
 
-💡 **نصائح لاستخدام موبي:**
-• اكتب أي سؤال وسأجيبك فوراً
-• يمكنني المساعدة في جميع المواضيع
-• ذاكرة موبي تحفظ آخر 15 رسالة
-• نظام موبي يعمل بالذكاء الاصطناعي المتقدم
+💡 **مميزات VIP:**
+• وصول غير محدود
+• أولوية في الرد
+• مميزات حصرية
 
-👨‍💻 **مطور موبي الشرير:** {DEVELOPER_USERNAME}
+👨‍💻 **المطور:** {DEVELOPER_USERNAME}
     """
-    
     bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
     memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/help")
 
-@bot.message_handler(commands=['new'])
-def handle_new(message):
-    """بدء محادثة جديدة مع موبي"""
-    memory.clear_conversation(message.from_user.id)
-    bot.send_message(message.chat.id, "🔄 موبي الشرير بدأ محادثة جديدة! ابدأ من الصفر.")
-    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/new")
+@bot.message_handler(commands=['vip'])
+def handle_vip(message):
+    """معلومات VIP"""
+    if memory.is_vip(message.from_user.id):
+        vip_text = f"""
+🌟 **أنت مستخدم VIP!**
 
-@bot.message_handler(commands=['memory'])
-def handle_memory(message):
-    """ذاكرة موبي الشرير"""
-    conversation = memory.get_user_conversation(message.from_user.id)
-    memory_info = f"""
-💾 **ذاكرة موبي الشرير**
+🎁 **مميزاتك:**
+✅ وصول غير محدود
+✅ أولوية في الردود
+✅ دعم فوري
+✅ مميزات حصرية
 
-📊 **معلومات محادثتك:**
-• عدد الرسائل: {len(conversation)}
-• المساحة المستخدمة: {len(str(conversation))} حرف
+👨‍💻 للمزيد: {DEVELOPER_USERNAME}
+        """
+    else:
+        vip_text = f"""
+🔓 **ترقية إلى VIP**
 
-🛠 **خيارات ذاكرة موبي:**
-/new - مسح الذاكرة وبدء محادثة جديدة
+💎 **مميزات VIP:**
+✅ وصول غير محدود
+✅ أولوية في الردود  
+✅ دعم فوري
+✅ إشعارات حصرية
 
-💡 **موبي يحفظ آخر 15 رسالة من محادثتك**
-    """
+💵 **للترقية:** تواصل مع {DEVELOPER_USERNAME}
+        """
     
-    bot.send_message(message.chat.id, memory_info, parse_mode='Markdown')
-    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/memory")
+    bot.send_message(message.chat.id, vip_text, parse_mode='Markdown')
+    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/vip")
 
 @bot.message_handler(commands=['status'])
+@require_subscription
 def handle_status(message):
-    """حالة نظام موبي"""
+    """حالة النظام"""
     total_users = memory.get_total_users()
     active_today = memory.get_active_today()
-    total_messages = sum(stats['message_count'] for stats in memory.user_stats.values())
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    vip_count = len(memory.get_vip_list())
     
     status_text = f"""
-📊 **حالة نظام موبي الشرير**
+📊 **حالة موبي VIP**
 
-👥 **مستخدمي موبي:**
+👥 **المستخدمين:**
 • الإجمالي: {total_users}
-• النشطين اليوم: {active_today}
-• مجموع الرسائل: {total_messages}
+• النشطين: {active_today}
+• VIP: {vip_count}
 
-⚡ **حالة موبي:** ✅ يعمل بأقصى طاقة
-🕒 **آخر تحديث:** {current_time}
-
-👨‍💻 **مطور النظام:** {DEVELOPER_USERNAME}
+⚡ **الحالة:** ✅ نشط
+🕒 **الوقت:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     """
-    
     bot.send_message(message.chat.id, status_text, parse_mode='Markdown')
     memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/status")
 
-@bot.message_handler(commands=['developer'])
-def handle_developer(message):
-    """مطور موبي الشرير"""
-    developer_text = f"""
-👨‍💻 **مطور موبي الشرير**
-
-📛 **الاسم:** {DEVELOPER_USERNAME}
-🆔 **الرقم:** {DEVELOPER_ID}
-
-📞 **للتواصل مع مطور موبي:** [اضغط هنا](https://t.me/{DEVELOPER_USERNAME[1:]})
-
-🔧 **نظام موبي مبرمج خصيصاً باستخدام:**
-• Python 3 المتقدم
-• pyTelegramBotAPI
-• أنظمة ذكاء اصطناعي متطورة
-• إدارة ذاكرة متقدمة
-
-💬 **للإبلاغ عن مشاكل أو اقتراحات، تواصل مع مطور موبي مباشرة**
-    """
-    
-    bot.send_message(message.chat.id, developer_text, reply_markup=create_developer_button(), parse_mode='Markdown')
-    memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/developer")
-
 @bot.message_handler(commands=['admin'])
 def handle_admin(message):
-    """لوحة تحكم موبي الشرير"""
+    """لوحة التحكم"""
     if not memory.is_admin(message.from_user.id):
-        bot.send_message(message.chat.id, "❌ ليس لديك صلاحية الوصول إلى لوحة تحكم موبي!")
+        bot.send_message(message.chat.id, "❌ ليس لديك صلاحية الوصول!")
         return
     
     admin_text = f"""
-👨‍💻 **لوحة تحكم موبي الشرير** {DEVELOPER_USERNAME}
+👨‍💻 **لوحة تحكم موبي VIP**
 
-📊 **اختر إدارة نظام موبي:**
+📊 **اختر الإدارة:**
+• 📊 الإحصائيات
+• 👥 المستخدمين
+• 🌟 إدارة VIP
+• 📢 البث للمستخدمين
+• 🚫 إدارة الحظر
 
-• 📊 إحصائيات مستخدمي موبي
-• 👥 قائمة مستخدمي موبي  
-• 🛡️ إدارة مشرفي موبي
-• 💬 محادثات مستخدمي موبي
-• 🚫 إدارة الحظر في موبي
-• 📢 بث رسالة من موبي
-
-✅ **نظام موبي يعمل تحت إشرافك**
+✅ **النظام تحت إشرافك**
     """
-    
     bot.send_message(message.chat.id, admin_text, reply_markup=create_admin_panel(), parse_mode='Markdown')
 
-# معالجة جميع الرسائل النصية
+# معالجة البث
+broadcast_state = {}
+
+@bot.message_handler(commands=['broadcast'])
+def handle_broadcast(message):
+    """بدء البث"""
+    if not memory.is_admin(message.from_user.id):
+        return
+    
+    broadcast_state[message.from_user.id] = 'waiting_message'
+    bot.send_message(message.chat.id, "📢 أرسل رسالة البث (نص، صورة، رابط):")
+
+# معالجة جميع الرسائل
 @bot.message_handler(func=lambda message: True)
+@require_subscription  
 def handle_all_messages(message):
-    """معالجة جميع الرسائل بواسطة موبي الشرير"""
+    """معالجة جميع الرسائل"""
     try:
         user_id = message.from_user.id
         
-        # تحديث إحصائيات موبي
-        memory.update_user_stats(
-            user_id,
-            message.from_user.username or "بدون معرف",
-            message.from_user.first_name or "بدون اسم",
-            message.text
-        )
+        # التحقق من حالة البث
+        if user_id in broadcast_state:
+            if broadcast_state[user_id] == 'waiting_message':
+                # إرسال البث
+                success_count = 0
+                total_users = len(memory.user_stats)
+                
+                for chat_id in memory.user_stats.keys():
+                    try:
+                        if message.text:
+                            bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
+                        elif message.photo:
+                            bot.send_photo(chat_id, message.photo[-1].file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                        success_count += 1
+                    except:
+                        continue
+                
+                bot.send_message(user_id, f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم")
+                broadcast_state.pop(user_id, None)
+                return
         
-        # إذا كان محظور من موبي
+        memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
+        
         if memory.is_banned(user_id):
-            bot.send_message(message.chat.id, "❌ تم حظرك من استخدام موبي الشرير. تواصل مع المطور لإلغاء الحظر.")
+            bot.send_message(message.chat.id, "❌ تم حظرك من استخدام البوت.")
             return
         
-        # إظهار "موبي يكتب..." 
         bot.send_chat_action(message.chat.id, 'typing')
         
-        # توليد الرد بواسطة موبي الشرير
         response = AdvancedAIService.generate_response(user_id, message.text)
         
-        # إرسال الرد
+        if response is None:
+            return  # تم التعامل مع الاشتراك مسبقاً
+        
         bot.send_message(message.chat.id, response)
         
-        logger.info(f"💬 موبي يعالج رسالة من {message.from_user.first_name}: {message.text[:50]}...")
-        
     except Exception as e:
-        logger.error(f"❌ خطأ في معالجة موبي: {e}")
-        bot.send_message(message.chat.id, "⚠️ عذراً، نظام موبي يواجه صعوبة. جرب مرة أخرى!")
+        logger.error(f"❌ خطأ في المعالجة: {e}")
 
 # معالجة Callback Queries
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
-    """معالجة ضغطات أزرار موبي"""
     user_id = call.from_user.id
     
-    if not memory.is_admin(user_id):
-        bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية الوصول إلى لوحة تحكم موبي!", show_alert=True)
+    if call.data == "check_subscription":
+        if check_subscription(user_id):
+            bot.answer_callback_query(call.id, "✅ مشترك! يمكنك استخدام البوت الآن.")
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            # إعادة إرسال start
+            handle_start(call.message)
+        else:
+            bot.answer_callback_query(call.id, "❌ لم تشترك بعد! اشترك ثم اضغط مرة أخرى.", show_alert=True)
+    
+    elif not memory.is_admin(user_id):
+        bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية!", show_alert=True)
         return
     
-    try:
-        if call.data == "admin_stats":
-            show_admin_stats(call)
-        elif call.data == "admin_users":
-            show_users_list(call)
-        elif call.data == "admin_manage":
-            show_admins_management(call)
-        elif call.data == "admin_conversations":
-            show_conversations_list(call)
-        elif call.data == "admin_ban":
-            show_ban_management(call)
-        elif call.data == "admin_broadcast":
-            ask_broadcast_message(call)
-        elif call.data == "admin_back":
-            show_admin_panel(call)
-        elif call.data.startswith("view_conversation_"):
-            view_user_conversation(call)
-        elif call.data.startswith("make_admin_"):
-            make_user_admin(call)
-        elif call.data.startswith("remove_admin_"):
-            remove_user_admin(call)
-        elif call.data.startswith("ban_user_"):
-            ban_user_action(call)
-        elif call.data.startswith("unban_user_"):
-            unban_user_action(call)
-    except Exception as e:
-        logger.error(f"❌ خطأ في معالجة كallback موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
+    elif call.data == "admin_stats":
+        show_admin_stats(call)
+    elif call.data == "admin_users":
+        show_users_list(call)
+    elif call.data == "admin_vip":
+        show_vip_management(call)
+    elif call.data == "admin_broadcast":
+        handle_broadcast(call.message)
+    elif call.data == "admin_ban":
+        show_ban_management(call)
 
-def show_admin_panel(call):
-    """عرض لوحة تحكم موبي"""
-    admin_text = f"""
-👨‍💻 **لوحة تحكم موبي الشرير** {DEVELOPER_USERNAME}
-
-📊 **اختر إدارة نظام موبي:**
-
-• 📊 إحصائيات مستخدمي موبي
-• 👥 قائمة مستخدمي موبي  
-• 🛡️ إدارة مشرفي موبي
-• 💬 محادثات مستخدمي موبي
-• 🚫 إدارة الحظر في موبي
-• 📢 بث رسالة من موبي
-
-✅ **نظام موبي يعمل تحت إشرافك**
-    """
-    
-    bot.edit_message_text(
-        admin_text,
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup=create_admin_panel(),
-        parse_mode='Markdown'
-    )
-
+# دوال الإدارة
 def show_admin_stats(call):
-    """عرض إحصائيات موبي"""
+    """عرض الإحصائيات"""
     try:
         total_users = memory.get_total_users()
         active_today = memory.get_active_today()
-        total_messages = sum(stats['message_count'] for stats in memory.user_stats.values())
-        banned_users = len(memory.banned_users)
-        admins_count = len(memory.get_admins_list())
+        vip_count = len(memory.get_vip_list())
+        banned_count = len(memory.banned_users)
         
         stats_text = f"""
-📊 **إحصائيات موبي الشرير**
+📊 **إحصائيات موبي VIP**
 
-👥 **مستخدمي موبي:**
-• الإجمالي: {total_users} مستخدم
-• النشطين اليوم: {active_today} مستخدم
-• المحظورين: {banned_users} مستخدم
-• المشرفين: {admins_count} مشرف
-• مجموع الرسائل: {total_messages} رسالة
+👥 **المستخدمين:**
+• الإجمالي: {total_users}
+• النشطين: {active_today} 
+• VIP: {vip_count}
+• المحظورين: {banned_count}
 
-🕒 **آخر تحديث:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🕒 **التحديث:** {datetime.now().strftime('%H:%M:%S')}
         """
-        
-        bot.edit_message_text(
-            stats_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=create_admin_panel(),
-            parse_mode='Markdown'
-        )
-        bot.answer_callback_query(call.id, "✅ تم تحديث إحصائيات موبي")
-        
+        bot.edit_message_text(stats_text, call.message.chat.id, call.message.message_id, 
+                            reply_markup=create_admin_panel(), parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"❌ خطأ في عرض إحصائيات موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
+        logger.error(f"❌ خطأ في الإحصائيات: {e}")
 
 def show_users_list(call):
-    """عرض قائمة مستخدمي موبي"""
+    """عرض المستخدمين"""
     try:
         users = memory.get_user_stats()
-        if not users:
-            bot.answer_callback_query(call.id, "❌ لا يوجد مستخدمين في موبي بعد!", show_alert=True)
-            return
+        users_text = "👥 **آخر 5 مستخدمين:**\n\n"
         
-        users_text = "👥 **آخر 10 مستخدمين في موبي:**\n\n"
         sorted_users = sorted(users.items(), key=lambda x: x[1]['last_seen'], reverse=True)
         
-        for i, (user_id, stats) in enumerate(sorted_users[:10], 1):
-            username = stats.get('username', 'بدون معرف')
-            first_name = stats.get('first_name', 'بدون اسم')
-            message_count = stats.get('message_count', 0)
-            last_seen = datetime.fromisoformat(stats['last_seen']).strftime('%m/%d %H:%M')
-            status = "🛡️" if stats.get('is_admin') else "🚫" if stats.get('is_banned') else "✅"
-            
-            users_text += f"{i}. {status} {first_name} (@{username})\n"
-            users_text += f"   📝 {message_count} رسالة | 🕒 {last_seen}\n\n"
+        for i, (user_id, stats) in enumerate(sorted_users[:5], 1):
+            status = "🌟" if stats.get('is_vip') else "🛡️" if stats.get('is_admin') else "✅"
+            users_text += f"{i}. {status} {stats['first_name']}\n"
+            users_text += f"   📝 {stats['message_count']} رسالة\n\n"
         
-        users_text += f"📊 الإجمالي: {len(users)} مستخدم"
-        
-        bot.edit_message_text(
-            users_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=create_admin_panel(),
-            parse_mode='Markdown'
-        )
-        bot.answer_callback_query(call.id, "✅ تم تحميل قائمة مستخدمي موبي")
-        
+        bot.edit_message_text(users_text, call.message.chat.id, call.message.message_id,
+                            reply_markup=create_admin_panel(), parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"❌ خطأ في عرض مستخدمي موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
+        logger.error(f"❌ خطأ في عرض المستخدمين: {e}")
 
-def show_conversations_list(call):
-    """عرض قائمة محادثات موبي"""
+def show_vip_management(call):
+    """إدارة VIP"""
     try:
-        users = memory.get_user_stats()
-        if not users:
-            bot.answer_callback_query(call.id, "❌ لا يوجد مستخدمين في موبي بعد!", show_alert=True)
-            return
+        vip_users = memory.get_vip_list()
+        vip_text = "🌟 **قائمة VIP:**\n\n"
         
-        # البحث عن المستخدمين الذين لديهم محادثات
-        users_with_conversations = []
-        for user_id, user_info in users.items():
-            conversation = memory.get_user_conversation(user_id)
-            if conversation:
-                users_with_conversations.append((user_id, user_info))
-        
-        if not users_with_conversations:
-            bot.answer_callback_query(call.id, "❌ لا توجد محادثات نشطة في موبي!", show_alert=True)
-            return
-        
-        conversations_text = "💬 **المستخدمين النشطين في موبي:**\n\n"
-        
-        for i, (user_id, user_info) in enumerate(users_with_conversations[:10], 1):
-            username = user_info.get('username', 'بدون معرف')
-            first_name = user_info.get('first_name', 'بدون اسم')
-            conversation = memory.get_user_conversation(user_id)
-            messages_count = len(conversation)
-            
-            conversations_text += f"{i}. {first_name} (@{username})\n"
-            conversations_text += f"   💬 {messages_count} رسالة في المحادثة\n\n"
-        
-        # إنشاء أزرار للمحادثات
-        keyboard = InlineKeyboardMarkup(row_width=2)
-        for user_id, user_info in users_with_conversations[:6]:
-            btn_text = f"{user_info['first_name']}"
-            keyboard.add(InlineKeyboardButton(btn_text, callback_data=f"view_conversation_{user_id}"))
-        
-        back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
-        keyboard.add(back_btn)
-        
-        bot.edit_message_text(
-            conversations_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=keyboard
-        )
-        bot.answer_callback_query(call.id, "✅ تم تحميل محادثات موبي")
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في عرض محادثات موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
-
-def view_user_conversation(call):
-    """عرض محادثة مستخدم في موبي"""
-    try:
-        user_id = int(call.data.split("_")[2])
-        conversation = memory.get_user_conversation(user_id)
-        user_info = memory.user_stats.get(user_id, {})
-        
-        if not conversation:
-            bot.answer_callback_query(call.id, "❌ لا توجد محادثات لهذا المستخدم في موبي!", show_alert=True)
-            return
-        
-        conv_text = f"💬 محادثة {user_info.get('first_name', 'مستخدم')} في موبي:\n\n"
-        
-        for msg in conversation[-8:]:
-            role = "👤" if msg['role'] == 'user' else "🤖 موبي"
-            time = datetime.fromisoformat(msg['timestamp']).strftime('%H:%M')
-            content = msg['content']
-            if len(content) > 60:
-                content = content[:60] + "..."
-            conv_text += f"{role} [{time}]: {content}\n\n"
-        
-        conv_text += f"📊 إجمالي الرسائل: {len(conversation)}"
-        
-        bot.edit_message_text(
-            conv_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=create_admin_panel()
-        )
-        bot.answer_callback_query(call.id, "✅ تم تحميل محادثة موبي")
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في عرض محادثة موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
-
-def show_admins_management(call):
-    """إدارة مشرفي موبي"""
-    try:
-        admins = memory.get_admins_list()
-        
-        admins_text = "🛡️ قائمة مشرفي موبي:\n\n"
-        
-        for i, admin in enumerate(admins, 1):
-            admins_text += f"{i}. {admin['first_name']} (@{admin['username']})\n"
-            admins_text += f"   📝 {admin['message_count']} رسالة\n\n"
+        if not vip_users:
+            vip_text += "❌ لا يوجد مستخدمين VIP"
+        else:
+            for i, user in enumerate(vip_users, 1):
+                vip_text += f"{i}. {user['first_name']} (@{user['username']})\n"
         
         keyboard = InlineKeyboardMarkup()
+        add_vip_btn = InlineKeyboardButton("➕ إضافة VIP", callback_data="add_vip")
         back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
-        keyboard.add(back_btn)
+        keyboard.add(add_vip_btn, back_btn)
         
-        bot.edit_message_text(
-            admins_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=keyboard
-        )
-        
+        bot.edit_message_text(vip_text, call.message.chat.id, call.message.message_id,
+                            reply_markup=keyboard, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"❌ خطأ في إدارة مشرفي موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
+        logger.error(f"❌ خطأ في إدارة VIP: {e}")
 
 def show_ban_management(call):
-    """إدارة الحظر في موبي"""
-    try:
-        banned_users = []
-        for user_id in memory.banned_users:
-            if user_id in memory.user_stats:
-                banned_users.append(memory.user_stats[user_id])
-        
-        ban_text = "🚫 المستخدمين المحظورين من موبي:\n\n"
-        
-        if not banned_users:
-            ban_text += "❌ لا يوجد مستخدمين محظورين في موبي"
-        else:
-            for i, user in enumerate(banned_users, 1):
-                ban_text += f"{i}. {user['first_name']} (@{user['username']})\n\n"
-        
-        keyboard = InlineKeyboardMarkup()
-        back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
-        keyboard.add(back_btn)
-        
-        bot.edit_message_text(
-            ban_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=keyboard
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ خطأ في إدارة حظر موبي: {e}")
-        bot.answer_callback_query(call.id, "❌ حدث خطأ في نظام موبي!", show_alert=True)
-
-def ask_broadcast_message(call):
-    """طلب رسالة البث من موبي"""
-    bot.answer_callback_query(call.id, "📢 خاصية البث من موبي قريباً!", show_alert=True)
-
-def make_user_admin(call):
-    """ترقية مستخدم إلى مشرف في موبي"""
-    bot.answer_callback_query(call.id, "🛡️ خاصية ترقية المشرفين في موبي قريباً!", show_alert=True)
-
-def remove_user_admin(call):
-    """إزالة مشرف من موبي"""
-    bot.answer_callback_query(call.id, "🛡️ خاصية إزالة المشرفين في موبي قريباً!", show_alert=True)
-
-def ban_user_action(call):
-    """حظر مستخدم من موبي"""
-    bot.answer_callback_query(call.id, "🚫 خاصية الحظر في موبي قريباً!", show_alert=True)
-
-def unban_user_action(call):
-    """إلغاء حظر مستخدم من موبي"""
-    bot.answer_callback_query(call.id, "✅ خاصية إلغاء الحظر في موبي قريباً!", show_alert=True)
+    """إدارة الحظر"""
+    banned_text = "🚫 **إدارة الحظر**\n\nاستخدم /admin لإضافة مستخدمين للحظر."
+    bot.edit_message_text(banned_text, call.message.chat.id, call.message.message_id,
+                        reply_markup=create_admin_panel(), parse_mode='Markdown')
 
 def main():
-    """الدالة الرئيسية لتشغيل موبي الشرير"""
-    logger.info("🚀 بدء تشغيل موبي الشرير - الذكاء الاصطناعي المتقدم...")
+    """الدالة الرئيسية"""
+    logger.info("🚀 بدء تشغيل موبي الشرير VIP...")
     
     try:
         bot.remove_webhook()
         
-        # اختبار الاتصال بالـAPI
-        logger.info("🔗 موبي الشرير يختبر الاتصال بالـAPI...")
+        # اختبار API
         try:
-            test_url = f"{AdvancedAIService.APIS[0]}?text=test"
+            test_url = f"{AdvancedAIService.API_URL}?text=test"
             response = requests.get(test_url, timeout=10)
-            logger.info(f"✅ API موبي الشرير يعمل: {response.status_code}")
+            logger.info(f"✅ API يعمل: {response.status_code}")
         except Exception as api_error:
-            logger.warning(f"⚠️ API موبي الشرير غير متاح: {api_error}")
+            logger.warning(f"⚠️ API غير متاح: {api_error}")
         
-        logger.info(f"✅ موبي الشرير جاهز للعمل - المطور: {DEVELOPER_USERNAME}")
-        logger.info("🤖 موبي الشرير يعمل الآن ويستمع للرسائل...")
+        logger.info(f"✅ موبي الشرير VIP جاهز - المطور: {DEVELOPER_USERNAME}")
         
-        # تشغيل البوت
+        # إضافة بعض المستخدمين VIP افتراضياً
+        default_vip_users = [123456789]  # أضف أرقام مستخدمين هنا
+        for vip_id in default_vip_users:
+            memory.add_vip(vip_id, "vip_user", "VIP User")
+        
         bot.infinity_polling(timeout=60, long_polling_timeout=60)
         
     except Exception as e:
-        logger.error(f"❌ خطأ في تشغيل موبي الشرير: {e}")
-        logger.info("🔄 موبي الشرير يعيد المحاولة بعد 10 ثواني...")
+        logger.error(f"❌ خطأ في التشغيل: {e}")
         import time
         time.sleep(10)
         main()
