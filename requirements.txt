@@ -1,6 +1,2 @@
-pyTelegramBotAPI==4.14.0
-requests==2.32.5
-psutil==5.9.5
-watchdog
-psutil
-python-telegram-bot
+requests==2.31.0
+flask==2.3.3
