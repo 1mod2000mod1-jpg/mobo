@@ -393,7 +393,7 @@ class AdvancedAIService:
                 if response and len(response.strip()) > 5:
                     return response
             except Exception as api_error:
-                logger.warning(f"⚠️ API غير متاح: {api_error}")
+                logger.warning(f"⚠️ موبي غير متاح: {api_error}")
             
             return AdvancedAIService.smart_fallback(user_message, user_id)
             
@@ -405,7 +405,7 @@ class AdvancedAIService:
     def primary_api_call(message, user_id):
         try:
             api_url = f"{AdvancedAIService.API_URL}?text={requests.utils.quote(message)}"
-            logger.info(f"🔗 موبي يتصل بالـAPI: {api_url}")
+            logger.info(f"🔗 يتصل بالـ موبي: {api_url}")
             
             response = requests.get(api_url, timeout=15)
             
@@ -439,7 +439,7 @@ class AdvancedAIService:
                 raise Exception(f"API error: {response.status_code}")
                 
         except Exception as e:
-            logger.error(f"❌ خطأ في API: {e}")
+            logger.error(f"❌ خطأ في موبي: {e}")
             raise
     
     @staticmethod
@@ -807,8 +807,8 @@ def handle_developer(message):
 📞 **للتواصل:** [اضغط هنا](https://t.me/{DEVELOPER_USERNAME[1:]})
 
 🔧 **البوت مبرمج خصيصاً باستخدام:**
-• Python 3 المتقدم
-• pyTelegramBotAPI
+• اقوى الأنظمة وأفضلها
+• خدمات سريعة ودقيقة
 • أنظمة ذكاء اصطناعي متطورة
 
 💬 **للإبلاغ عن مشاكل أو اقتراحات، تواصل مباشرة**
@@ -1390,9 +1390,9 @@ def main():
         try:
             test_url = f"{AdvancedAIService.API_URL}?text=test"
             response = requests.get(test_url, timeout=10)
-            logger.info(f"✅ API يعمل: {response.status_code}")
+            logger.info(f"✅ موبي يعمل: {response.status_code}")
         except Exception as api_error:
-            logger.warning(f"⚠️ API غير متاح: {api_error}")
+            logger.warning(f"⚠️ موبي غير متاح: {api_error}")
         
         logger.info(f"✅ موبي الشرير جاهز - المطور: {DEVELOPER_USERNAME}")
         logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
