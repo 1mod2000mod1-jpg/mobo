@@ -1,3 +1,4 @@
 pyTelegramBotAPI==4.14.0
 requests==2.32.5
 psutil==5.9.5
+pip install watchdog psutil
