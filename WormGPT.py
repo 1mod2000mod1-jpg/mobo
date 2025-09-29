@@ -47,7 +47,7 @@
 
     def main():
         # استبدل 'YOUR_TELEGRAM_BOT_TOKEN_HERE' بالتوكن الحقيقي
-        updater = Updater("YOUR_TELEGRAM_BOT_TOKEN_HERE")
+        updater = Updater("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4")
         dp = updater.dispatcher
         dp.add_handler(CommandHandler("start", start))
 
