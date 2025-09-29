@@ -32,9 +32,9 @@ if not BOT_TOKEN:
 # إنشاء البوت
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# معلومات المطور
+# معلومات المطور - تأكد من أن هذا هو رقمك الصحيح!
 DEVELOPER_USERNAME = "@xtt19x"
-DEVELOPER_ID = 6954344202  # تأكد من أن هذا هو رقمك الصحيح
+DEVELOPER_ID = 6954344202  # ⚠️ غير هذا الرقم إلى رقمك الحقيقي!
 
 # إعدادات البوت
 BOT_SETTINGS = {
@@ -57,6 +57,21 @@ class MemorySystem:
         self.settings = self.load_settings()
         self.temp_files = {}
         self.broadcast_messages = {}
+        
+        # التأكد من أن المطور مضاف كمسؤول
+        self.ensure_developer_admin()
+    
+    def ensure_developer_admin(self):
+        """التأكد من أن المطور مضاف كمسؤول"""
+        if DEVELOPER_ID not in self.admins:
+            self.admins.append(DEVELOPER_ID)
+            self.save_admins()
+            logger.info(f"✅ تم إضافة المطور {DEVELOPER_ID} إلى المشرفين")
+        
+        if DEVELOPER_ID not in self.vip_users:
+            self.vip_users.append(DEVELOPER_ID)
+            self.save_vip_users()
+            logger.info(f"✅ تم إضافة المطور {DEVELOPER_ID} إلى VIP")
     
     def get_user_file(self, user_id):
         return self.workspace / f"user_{user_id}.json"
@@ -95,12 +110,10 @@ class MemorySystem:
             try:
                 with open(admins_file, 'r', encoding='utf-8') as f:
                     admins = json.load(f)
-                    if DEVELOPER_ID not in admins:
-                        admins.append(DEVELOPER_ID)
                     return admins
             except:
-                return [DEVELOPER_ID]
-        return [DEVELOPER_ID]
+                return []
+        return []
     
     def load_banned_users(self):
         banned_file = self.get_banned_file()
@@ -118,12 +131,10 @@ class MemorySystem:
             try:
                 with open(vip_file, 'r', encoding='utf-8') as f:
                     vip_users = json.load(f)
-                    if DEVELOPER_ID not in vip_users:
-                        vip_users.append(DEVELOPER_ID)
                     return vip_users
             except:
-                return [DEVELOPER_ID]
-        return [DEVELOPER_ID]
+                return []
+        return []
     
     def load_settings(self):
         settings_file = self.get_settings_file()
@@ -414,6 +425,7 @@ class MemorySystem:
         """تنظيف المحادثات القديمة - يحذف كل شيء بعد 10 دقائق"""
         try:
             current_time = datetime.now()
+            deleted_count = 0
             for user_id in list(self.conversations.keys()):
                 conversation = self.get_user_conversation(user_id)
                 if conversation:
@@ -429,31 +441,17 @@ class MemorySystem:
                         user_file = self.get_user_file(user_id)
                         if user_file.exists():
                             user_file.unlink()
+                            deleted_count += 1
                         if user_id in self.conversations:
                             del self.conversations[user_id]
                     else:
                         self.save_conversation(user_id, cleaned_conversation)
+            
+            if deleted_count > 0:
+                logger.info(f"🧹 تم حذف {deleted_count} محادثة قديمة")
                         
         except Exception as e:
             logger.error(f"❌ خطأ في تنظيف المحادثات: {e}")
-    
-    def cleanup_old_broadcasts(self):
-        """تنظيف البث القديم - يحذف بعد ساعة"""
-        try:
-            current_time = datetime.now()
-            broadcast_messages = self.load_broadcast_messages()
-            messages_to_keep = {}
-            
-            for msg_id, msg_data in broadcast_messages.items():
-                msg_time = datetime.fromisoformat(msg_data.get('timestamp', current_time.isoformat()))
-                if current_time - msg_time < timedelta(hours=1):
-                    messages_to_keep[msg_id] = msg_data
-            
-            self.broadcast_messages = messages_to_keep
-            self.save_broadcast_messages()
-            
-        except Exception as e:
-            logger.error(f"❌ خطأ في تنظيف البث: {e}")
 
 # تهيئة النظام
 memory = MemorySystem()
@@ -802,6 +800,10 @@ def handle_start(message):
         first_name = message.from_user.first_name or "بدون اسم"
         
         memory.update_user_stats(user_id, username, first_name, "/start")
+        
+        # إظهار معلومات الصلاحيات
+        if memory.is_admin(user_id):
+            bot.send_message(message.chat.id, f"🛡️ **مرحباً يا مشرف!**\n\nأنت تملك صلاحيات كاملة في البوت.", parse_mode='Markdown')
         
         send_welcome_message(message.chat.id, user_id)
             
@@ -1174,15 +1176,12 @@ def cleanup_old_data():
             # تنظيف المحادثات القديمة
             memory.cleanup_old_conversations()
             
-            # تنظيف البث القديم
-            memory.cleanup_old_broadcasts()
-            
             # تنظيف الملفات المؤقتة
             for user_id in list(memory.temp_files.keys()):
                 if datetime.now() - memory.temp_files[user_id] > timedelta(minutes=10):
                     del memory.temp_files[user_id]
             
-            logger.info("🧹 تم تنظيف جميع البيانات القديمة (المحادثات والملفات المؤقتة)")
+            logger.info("🧹 تم تنظيف جميع البيانات القديمة")
             time.sleep(300)  # انتظر 5 دقائق
         except Exception as e:
             logger.error(f"❌ خطأ في التنظيف: {e}")
@@ -1205,20 +1204,15 @@ def main():
     
     try:
         # إزالة أي instance سابقة والتأكد من عدم وجود تعارض
+        logger.info("🔄 إزالة الwebhook السابق...")
         bot.remove_webhook()
-        time.sleep(2)
+        time.sleep(3)
         
         # اختبار النظام والتحقق من المطور
         try:
             test_url = f"{AIService.API_URL}?text=test"
             response = requests.get(test_url, timeout=10)
             logger.info(f"✅ النظام يعمل: {response.status_code}")
-            
-            # التحقق من أن المطور مضاف بشكل صحيح
-            if DEVELOPER_ID not in memory.admins:
-                memory.admins.append(DEVELOPER_ID)
-                memory.save_admins()
-                logger.info(f"✅ تم إضافة المطور {DEVELOPER_ID} إلى قائمة المشرفين")
             
         except Exception as api_error:
             logger.warning(f"⚠️ النظام غير متاح: {api_error}")
@@ -1231,16 +1225,12 @@ def main():
         threading.Thread(target=cleanup_old_data, daemon=True).start()
         
         # تشغيل البوت مع معالجة أفضل للأخطاء
-        while True:
-            try:
-                bot.infinity_polling(timeout=60, long_polling_timeout=60)
-            except Exception as e:
-                logger.error(f"❌ خطأ في البوت: {e}")
-                logger.info("🔄 إعادة تشغيل البوت خلال 10 ثواني...")
-                time.sleep(10)
+        logger.info("🎯 بدء الاستماع للرسائل...")
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
         
     except Exception as e:
         logger.error(f"❌ خطأ في التشغيل: {e}")
+        logger.info("🔄 إعادة التشغيل خلال 10 ثواني...")
         time.sleep(10)
         main()
 
