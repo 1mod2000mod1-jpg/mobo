@@ -33,7 +33,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # معلومات المطور
 DEVELOPER_USERNAME = "@xtt19x"
-DEVELOPER_ID = 6521966233
+DEVELOPER_ID = 0000000000
 
 # إعدادات البوت
 BOT_SETTINGS = {
@@ -411,7 +411,7 @@ memory = MemorySystem()
 
 # نظام الذكاء الاصطناعي
 class AIService:
-    API_URL = "http://sii3.top/DARK/api/wormgpt.php"
+    API_URL = "https://sii3.top/api/grok4.php?text=hello"
     
     @staticmethod
     def generate_response(user_id, user_message):
