@@ -267,60 +267,59 @@ class AdvancedAIService:
         "https://api.deepseek.com/chat/completions",
         "https://api.openai.com/v1/chat/completions"
     ]
-    
     @staticmethod
-    def generate_response(user_id, user_message):
-        """توليد رد باستخدام أقوى نظام ذكاء اصطناعي"""
-        try:
-            if memory.is_banned(user_id):
-                return "❌ تم حظرك من استخدام موبي الشرير. تواصل مع المطور لإلغاء الحظر."
-            
-            memory.add_message(user_id, "user", user_message)
-            
-            # المحاولة مع API الأساسي أولاً
+    def custom_api_call(message, user_id):
+    """الاتصال بالـ API الخاص واستخراج الرد فقط"""
+    try:
+        api_url = f"{CustomAIService.API_URL}?text={requests.utils.quote(message)}"
+        logger.info(f"🔗 موبي الشرير يتصل بالـAPI: {api_url}")
+        
+        response = requests.get(api_url, timeout=15)
+        
+        if response.status_code == 200:
+            # محاولة الحصول على الرد كـ JSON أولاً
             try:
-                response = AdvancedAIService.primary_api_call(user_message, user_id)
-                if response and len(response.strip()) > 10:
-                    return response
-            except Exception as api_error:
-                logger.warning(f"⚠️ API الأساسي غير متاح: {api_error}")
-            
-            # استخدام النظام الاحتياطي الذكي
-            return AdvancedAIService.smart_ai_system(user_message, user_id)
-            
-        except Exception as e:
-            logger.error(f"❌ خطأ في نظام موبي الشرير: {e}")
-            return "⚠️ عذراً، نظام موبي الشرير يواجه بعض الصعوبات. جرب مرة أخرى!"
-    
-    @staticmethod
-    def primary_api_call(message, user_id):
-        """الاتصال بالـ API الأساسي"""
-        try:
-            api_url = f"{AdvancedAIService.APIS[0]}?text={requests.utils.quote(message)}"
-            logger.info(f"🔗 موبي الشرير يتصل بالـAPI: {api_url}")
-            
-            response = requests.get(api_url, timeout=15)
-            
-            if response.status_code == 200:
+                data = response.json()
+                # استخراج الرد فقط من المفتاح 'response'
+                ai_response = data.get('response', '')
+            except:
+                # إذا فشل JSON، استخدم النص مباشرة
                 ai_response = response.text.strip()
-                
-                if not ai_response or ai_response.isspace():
-                    ai_response = "🔄 موبي الشرير يفكر... جرب صياغة سؤالك بطريقة أخرى!"
-                
-                # تنظيف الرد
-                ai_response = ai_response.replace('\\n', '\n').replace('\\t', '\t')
-                if len(ai_response) > 2000:
-                    ai_response = ai_response[:2000] + "..."
-                
-                memory.add_message(user_id, "assistant", ai_response)
-                logger.info(f"✅ موبي الشرير حصل على رد: {ai_response[:100]}...")
-                return ai_response
-            else:
-                raise Exception(f"API error: {response.status_code}")
-                
-        except Exception as e:
-            logger.error(f"❌ خطأ في API موبي الشرير: {e}")
-            raise
+            
+            # تنظيف الرد من أي معلومات إضافية
+            import re
+            # إذا كان الرد يحتوي على JSON كامل، استخرج قيمة response فقط
+            if '{"date"' in ai_response and '"response"' in ai_response:
+                match = re.search(r'"response":"([^"]*)"', ai_response)
+                if match:
+                    ai_response = match.group(1)
+            
+            # إزالة أي نص عن المطور أو القناة
+            lines = ai_response.split('\n')
+            clean_lines = []
+            for line in lines:
+                if not any(x in line.lower() for x in ['dev:', 'support', 'channel', '@']):
+                    clean_lines.append(line)
+            ai_response = '\n'.join(clean_lines).strip()
+            
+            # إذا كان الرد فارغاً بعد التنظيف
+            if not ai_response:
+                ai_response = "🔄 موبي الشرير يحتاج إلى مزيد من التفكير... جرب مرة أخرى!"
+            
+            # تنظيف النهائي
+            ai_response = ai_response.replace('\\n', '\n').replace('\\t', '\t')
+            if len(ai_response) > 2000:
+                ai_response = ai_response[:2000] + "..."
+            
+            memory.add_message(user_id, "assistant", ai_response)
+            logger.info(f"✅ موبي الشرير حصل على رد: {ai_response[:100]}...")
+            return ai_response
+        else:
+            raise Exception(f"API error: {response.status_code}")
+            
+    except Exception as e:
+        logger.error(f"❌ خطأ في API موبي الشرير: {e}")
+        raise
     
     @staticmethod
     def smart_ai_system(message, user_id):
