@@ -1740,22 +1740,21 @@ def main():
         import time
         time.sleep(10)
         main()
-# تحقق من أن البوت يعمل أونلاين
-def check_online_status():
-    try:
-        bot_info = bot.get_me()
-        logger.info(f"✅ البوت يعمل أونلاين: @{bot_info.username}")
-        logger.info(f"🌐 حالة السيرفر: نشط")
-        logger.info(f"👤 اسم البوت: {bot_info.first_name}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ البوت غير متصل بالإنترنت: {e}")
-        return False
+# إنشاء التطبيق
+    application = Application.builder().token(BOT_TOKEN).build()
 
-# تحقق من الاتصال عند البدء
-if check_online_status():
-    logger.info("🚀 البوت جاهز للعمل الأونلاين!")
-else:
-    logger.error("❌ فشل الاتصال بالإنترنت!")
+    # إضافة المعالجات
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("ping", ping_command))
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_error_handler(error_handler)
+
+    # البدء
+    logger.info("🚀 بدء تشغيل البوت...")
+    application.run_polling()
+    logger.info("✅ البوت يعمل!")
+
 if __name__ == "__main__":
     main()
