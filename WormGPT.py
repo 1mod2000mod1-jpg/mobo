@@ -15,6 +15,47 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import watchdog
 import psutil
+print("الكتبات مثبتة بنجاح")
+except ImportError as e:
+print(f"خطأ في التثبيت: {e}")
+from telegram.ext import Updater, CommandHandler
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import psutil
+import os
+import sys
+
+class ChangeHandler(FileSystemEventHandler):
+        def on_modified(self, event):
+            if event.src_path.endswith('.py'):
+                print(f"تم تعديل الملف: {event.src_path}")
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    def start(update, context):
+        update.message.reply_text('Hello!')
+
+    def main():
+        updater = Updater("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4", use_context=True)
+        dp = updater.dispatcher
+        dp.add_handler(CommandHandler("start", start))
+
+        updater.start_polling()
+        updater.idle()
+
+        event_handler = ChangeHandler()
+        observer = Observer()
+        observer.schedule(event_handler, path='.', recursive=False)
+        observer.start()
+
+        try:
+            while True:
+                pass
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
+
+    if __name__ == '__main__':
+        main()
 # إعداد التسجيل
 logging.basicConfig(
     level=logging.INFO,
