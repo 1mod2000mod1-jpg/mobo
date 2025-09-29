@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-موبي الشرير - بوت الذكاء الاصطناعي المتقدم والأفضل على الاطلاق VIP مع الوضع المجاني
+موبي - البوت الذكي المتقدم
 """
 
 import os
 import json
 import logging
 import requests
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 import telebot
@@ -17,14 +18,13 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("موبي_الشرير_VIP")
+logger = logging.getLogger("موبي_البوت")
 
-# التوكن - هذا فقط المطلوب
+# التوكن
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 if not BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN غير معروف")
-    logger.info("💡 تأكد من تعيين TELEGRAM_BOT_TOKEN في Render Environment")
     exit(1)
 
 # إنشاء البوت
@@ -42,10 +42,10 @@ BOT_SETTINGS = {
     "subscription_enabled": False
 }
 
-# نظام الذاكرة والإحصائيات والإدارة
+# نظام الذاكرة
 class MemorySystem:
     def __init__(self):
-        self.workspace = Path("/tmp/mobi_vip_memory")
+        self.workspace = Path("/tmp/mobi_memory")
         self.workspace.mkdir(exist_ok=True)
         self.conversations = {}
         self.user_stats = self.load_user_stats()
@@ -167,7 +167,8 @@ class MemorySystem:
                 'is_banned': user_id in self.banned_users,
                 'is_vip': user_id in self.vip_users,
                 'message_limit': self.settings.get('free_messages', 50),
-                'used_messages': 0
+                'used_messages': 0,
+                'points': 0
             }
         else:
             self.user_stats[user_id]['message_count'] += 1
@@ -257,6 +258,22 @@ class MemorySystem:
             return True
         return False
     
+    def add_points(self, user_id, points):
+        if user_id in self.user_stats:
+            self.user_stats[user_id]['points'] = self.user_stats[user_id].get('points', 0) + points
+            self.save_user_stats()
+            return True
+        return False
+    
+    def remove_points(self, user_id, points):
+        if user_id in self.user_stats:
+            current_points = self.user_stats[user_id].get('points', 0)
+            new_points = max(0, current_points - points)
+            self.user_stats[user_id]['points'] = new_points
+            self.save_user_stats()
+            return True
+        return False
+    
     def is_admin(self, user_id):
         return user_id in self.admins
     
@@ -292,7 +309,8 @@ class MemorySystem:
                     'id': admin_id,
                     'username': stats.get('username', 'بدون معرف'),
                     'first_name': stats.get('first_name', 'بدون اسم'),
-                    'message_count': stats.get('message_count', 0)
+                    'message_count': stats.get('message_count', 0),
+                    'points': stats.get('points', 0)
                 })
         return admins_info
     
@@ -305,7 +323,8 @@ class MemorySystem:
                     'id': vip_id,
                     'username': stats.get('username', 'بدون معرف'),
                     'first_name': stats.get('first_name', 'بدون اسم'),
-                    'message_count': stats.get('message_count', 0)
+                    'message_count': stats.get('message_count', 0),
+                    'points': stats.get('points', 0)
                 })
         return vip_info
     
@@ -372,8 +391,8 @@ class MemorySystem:
 # تهيئة النظام
 memory = MemorySystem()
 
-# خدمات الذكاء الاصطناعي المتقدم
-class AdvancedAIService:
+# نظام الذكاء الاصطناعي
+class AIService:
     API_URL = "https://sii3.top/api/DarkCode.php"
     
     @staticmethod
@@ -384,28 +403,28 @@ class AdvancedAIService:
                 return f"❌ انتهت رسائلك المجانية! ({status})\n\n💎 ترقى إلى VIP للاستخدام غير المحدود!\n/upgrade للترقية"
             
             if memory.is_banned(user_id):
-                return "❌ تم حظرك من استخدام موبي الشرير."
+                return "❌ تم حظرك من استخدام موبي."
             
             memory.add_message(user_id, "user", user_message)
             
             try:
-                response = AdvancedAIService.primary_api_call(user_message, user_id)
+                response = AIService.api_call(user_message, user_id)
                 if response and len(response.strip()) > 5:
                     return response
             except Exception as api_error:
-                logger.warning(f"⚠️ موبي غير متاح: {api_error}")
+                logger.warning(f"⚠️ النظام غير متاح: {api_error}")
             
-            return AdvancedAIService.smart_fallback(user_message, user_id)
+            return AIService.smart_response(user_message, user_id)
             
         except Exception as e:
-            logger.error(f"❌ خطأ في نظام موبي: {e}")
-            return "⚠️ عذراً، نظام موبي يواجه صعوبات. جرب مرة أخرى!"
+            logger.error(f"❌ خطأ في النظام: {e}")
+            return "⚠️ عذراً، النظام يواجه صعوبات. جرب مرة أخرى!"
     
     @staticmethod
-    def primary_api_call(message, user_id):
+    def api_call(message, user_id):
         try:
-            api_url = f"{AdvancedAIService.API_URL}?text={requests.utils.quote(message)}"
-            logger.info(f"🔗 يتصل بالـ موبي: {api_url}")
+            api_url = f"{AIService.API_URL}?text={requests.utils.quote(message)}"
+            logger.info(f"🔗 موبي يتصل بالنظام: {api_url}")
             
             response = requests.get(api_url, timeout=15)
             
@@ -436,27 +455,30 @@ class AdvancedAIService:
                 logger.info(f"✅ موبي رد: {ai_response[:100]}...")
                 return ai_response
             else:
-                raise Exception(f"API error: {response.status_code}")
+                raise Exception(f"خطأ في النظام: {response.status_code}")
                 
         except Exception as e:
-            logger.error(f"❌ خطأ في موبي: {e}")
+            logger.error(f"❌ خطأ في النظام: {e}")
             raise
     
     @staticmethod
-    def smart_fallback(message, user_id):
+    def smart_response(message, user_id):
         message_lower = message.lower()
         
         responses = {
-            'مرحبا': 'أهلاً! أنا موبي الشرير 🤖! كيف يمكنني مساعدتك؟ 💫',
+            'مرحبا': 'أهلاً! أنا موبي 🤖! كيف يمكنني مساعدتك؟ 💫',
             'السلام عليكم': 'وعليكم السلام ورحمة الله وبركاته! موبي جاهز لخدمتك. 🌟',
             'شكرا': 'العفو! دائماً سعيد بمساعدتك. 😊',
-            'اسمك': 'أنا موبي الشرير! 🤖 الذكاء الاصطناعي الذكي!',
+            'اسمك': 'أنا موبي! 🤖 المساعد الذكي!',
+            'من صنعك': f'السيد موبي - {DEVELOPER_USERNAME} 👑',
+            'من صنعك؟': f'السيد موبي - {DEVELOPER_USERNAME} 👑',
+            'صانعك': f'السيد موبي - {DEVELOPER_USERNAME} 👑',
+            'مطورك': f'السيد موبي - {DEVELOPER_USERNAME} 👑',
+            'مين صنعك': f'السيد موبي - {DEVELOPER_USERNAME} 👑',
             'كيف حالك': 'أنا بخير الحمدلله! جاهز لمساعدتك. ⚡',
             'مساعدة': 'موبي يمكنه مساعدتك في:\n• الإجابة على الأسئلة\n• الشرح والتوضيح\n• الكتابة والإبداع\n• حل المشكلات\nما الذي تحتاج؟ 🎯',
-            'مطور': f'المطور: {DEVELOPER_USERNAME} 👨‍💻',
-            'موبي': 'نعم! أنا موبي الشرير هنا! 🤖 كيف يمكنني مساعدتك؟',
-            'شرير': '😈 أنا شرير في الذكاء فقط! دائماً هنا لمساعدتك بخير.',
-            'ذكاء اصطناعي': '🦾 نعم! أنا موبي الشرير - ذكاء اصطناعي متطور!',
+            'مطور': f'السيد موبي - {DEVELOPER_USERNAME} 👑',
+            'موبي': 'نعم! أنا موبي هنا! 🤖 كيف يمكنني مساعدتك؟',
             'vip': '🌟 نظام VIP يمنحك صلاحيات متقدمة! تواصل مع المطور.',
             'بريميوم': '💎 اشترك في البريميوم للوصول غير المحدود!',
             'ترقية': f'💎 للترقية إلى VIP تواصل مع {DEVELOPER_USERNAME}',
@@ -505,7 +527,7 @@ def create_subscription_button():
 
 def create_developer_button():
     keyboard = InlineKeyboardMarkup()
-    developer_btn = InlineKeyboardButton("👨‍💻 المطور", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
+    developer_btn = InlineKeyboardButton("👑 السيد موبي", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
     keyboard.add(developer_btn)
     return keyboard
 
@@ -519,12 +541,14 @@ def create_admin_panel():
     vip_btn = InlineKeyboardButton("🌟 إدارة VIP", callback_data="admin_vip")
     broadcast_btn = InlineKeyboardButton("📢 البث", callback_data="admin_broadcast")
     ban_btn = InlineKeyboardButton("🚫 الحظر", callback_data="admin_ban")
+    points_btn = InlineKeyboardButton("🎯 النقاط", callback_data="admin_points")
     settings_btn = InlineKeyboardButton("⚙️ الإعدادات", callback_data="admin_settings")
     
     keyboard.add(stats_btn, users_btn)
     keyboard.add(admins_btn, conversations_btn)
     keyboard.add(vip_btn, broadcast_btn)
-    keyboard.add(ban_btn, settings_btn)
+    keyboard.add(ban_btn, points_btn)
+    keyboard.add(settings_btn)
     
     return keyboard
 
@@ -534,7 +558,7 @@ def create_main_menu():
     help_btn = InlineKeyboardButton("🆘 المساعدة", callback_data="user_help")
     status_btn = InlineKeyboardButton("📊 الحالة", callback_data="user_status")
     vip_btn = InlineKeyboardButton("💎 ترقية", callback_data="user_vip")
-    developer_btn = InlineKeyboardButton("👨‍💻 المطور", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
+    developer_btn = InlineKeyboardButton("👑 السيد موبي", url=f"https://t.me/{DEVELOPER_USERNAME[1:]}")
     
     keyboard.add(help_btn, status_btn)
     keyboard.add(vip_btn, developer_btn)
@@ -556,14 +580,33 @@ def create_settings_menu():
     
     return keyboard
 
-def create_users_keyboard(users_data, action):
+def create_broadcast_menu():
     keyboard = InlineKeyboardMarkup(row_width=2)
     
-    for user_id, user_info in users_data[:10]:
-        btn_text = f"{user_info['first_name']} ({user_info['message_count']} رسالة)"
-        keyboard.add(InlineKeyboardButton(btn_text, callback_data=f"{action}_{user_id}"))
-    
+    text_btn = InlineKeyboardButton("📝 نص", callback_data="broadcast_text")
+    photo_btn = InlineKeyboardButton("🖼️ صورة", callback_data="broadcast_photo")
+    video_btn = InlineKeyboardButton("🎥 فيديو", callback_data="broadcast_video")
+    audio_btn = InlineKeyboardButton("🎵 صوت", callback_data="broadcast_audio")
+    document_btn = InlineKeyboardButton("📄 ملف", callback_data="broadcast_document")
     back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+    
+    keyboard.add(text_btn, photo_btn)
+    keyboard.add(video_btn, audio_btn)
+    keyboard.add(document_btn)
+    keyboard.add(back_btn)
+    
+    return keyboard
+
+def create_points_menu():
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    add_points_btn = InlineKeyboardButton("➕ إضافة نقاط", callback_data="add_points")
+    remove_points_btn = InlineKeyboardButton("➖ نزع نقاط", callback_data="remove_points")
+    send_user_btn = InlineKeyboardButton("📤 إرسال لمستخدم", callback_data="send_to_user")
+    back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
+    
+    keyboard.add(add_points_btn, remove_points_btn)
+    keyboard.add(send_user_btn)
     keyboard.add(back_btn)
     
     return keyboard
@@ -582,7 +625,7 @@ def require_subscription(func):
             subscription_msg = f"""
 📢 **اشتراك إجباري مطلوب!**
 
-🔐 للوصول إلى موبي الشرير، يجب الاشتراك في قناتنا أولاً:
+🔐 للوصول إلى موبي، يجب الاشتراك في قناتنا أولاً:
 
 {memory.settings['required_channel']}
 
@@ -619,7 +662,7 @@ def handle_start(message):
             user_status = f"🔓 **وضع مجاني** - {status}\n"
         
         welcome_text = f"""
-🤖 **مرحباً! أنا موبي الشرير**
+🤖 **مرحباً! أنا موبي**
 
 {user_status}
 ⚡ **المميزات:**
@@ -637,7 +680,7 @@ def handle_start(message):
 /new - محادثة جديدة
 /developer - المطور
 
-👨‍💻 **المطور:** {DEVELOPER_USERNAME}
+👑 **المطور:** {DEVELOPER_USERNAME}
         """
         
         if memory.settings.get('welcome_image'):
@@ -665,7 +708,7 @@ def handle_start(message):
 @require_subscription
 def handle_help(message):
     help_text = f"""
-🆘 **مساعدة موبي الشرير**
+🆘 **مساعدة موبي**
 
 📋 **الأوامر:**
 /start - بدء المحادثة
@@ -685,7 +728,7 @@ def handle_help(message):
 • أولوية في الردود
 • دعم فوري
 
-👨‍💻 **المطور:** {DEVELOPER_USERNAME}
+👑 **المطور:** {DEVELOPER_USERNAME}
     """
     bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
     memory.update_user_stats(message.from_user.id, message.from_user.username, message.from_user.first_name, "/help")
@@ -702,7 +745,7 @@ def handle_upgrade(message):
 ✅ دعم فوري
 ✅ مميزات حصرية
 
-👨‍💻 للمزيد: {DEVELOPER_USERNAME}
+👑 للمزيد: {DEVELOPER_USERNAME}
         """
     else:
         vip_text = f"""
@@ -730,6 +773,8 @@ def handle_upgrade(message):
 def handle_status(message):
     user_id = message.from_user.id
     can_send, status = memory.can_send_message(user_id)
+    user_stats = memory.user_stats.get(user_id, {})
+    points = user_stats.get('points', 0)
     
     if memory.is_vip(user_id):
         status_text = f"""
@@ -737,6 +782,7 @@ def handle_status(message):
 
 💎 **النوع:** VIP مميز
 📨 **الرسائل:** غير محدود
+🎯 **النقاط:** {points}
 ⚡ **الحالة:** نشط
 
 🎁 **أنت تتمتع بجميع المميزات!**
@@ -747,12 +793,12 @@ def handle_status(message):
 
 👑 **النوع:** مشرف
 📨 **الرسائل:** غير محدود
+🎯 **النقاط:** {points}
 ⚡ **الحالة:** نشط
 
 🔧 **صلاحيات إدارية كاملة**
         """
     else:
-        user_stats = memory.user_stats.get(user_id, {})
         used = user_stats.get('used_messages', 0)
         limit = user_stats.get('message_limit', memory.settings.get('free_messages', 50))
         remaining = limit - used
@@ -762,6 +808,7 @@ def handle_status(message):
 
 📨 **الرسائل:** {used}/{limit}
 🎯 **المتبقي:** {remaining}
+🎯 **النقاط:** {points}
 ⚡ **الحالة:** {status}
 
 💎 **للترقية:** /upgrade
@@ -799,7 +846,7 @@ def handle_new(message):
 @bot.message_handler(commands=['developer'])
 def handle_developer(message):
     developer_text = f"""
-👨‍💻 **مطور موبي الشرير**
+👑 **مطور موبي**
 
 📛 **الاسم:** {DEVELOPER_USERNAME}
 🆔 **الرقم:** {DEVELOPER_ID}
@@ -807,7 +854,7 @@ def handle_developer(message):
 📞 **للتواصل:** [اضغط هنا](https://t.me/{DEVELOPER_USERNAME[1:]})
 
 🔧 **البوت مبرمج خصيصاً باستخدام:**
-• اقوى الأنظمة وأفضلها
+• أقوى الأنظمة وأفضلها
 • خدمات سريعة ودقيقة
 • أنظمة ذكاء اصطناعي متطورة
 
@@ -823,7 +870,7 @@ def handle_admin(message):
         return
     
     admin_text = f"""
-👨‍💻 **لوحة تحكم موبي الشرير**
+👑 **لوحة تحكم موبي**
 
 📊 **اختر الإدارة:**
 • 📊 الإحصائيات
@@ -833,25 +880,21 @@ def handle_admin(message):
 • 🌟 إدارة VIP
 • 📢 البث للمستخدمين
 • 🚫 إدارة الحظر
+• 🎯 النقاط
 • ⚙️ الإعدادات
 
 ✅ **النظام تحت إشرافك**
     """
     bot.send_message(message.chat.id, admin_text, reply_markup=create_admin_panel(), parse_mode='Markdown')
 
+# حالات المستخدم
 broadcast_state = {}
 admin_state = {}
 ban_state = {}
 vip_state = {}
 settings_state = {}
-
-@bot.message_handler(commands=['broadcast'])
-def handle_broadcast(message):
-    if not memory.is_admin(message.from_user.id):
-        return
-    
-    broadcast_state[message.from_user.id] = 'waiting_message'
-    bot.send_message(message.chat.id, "📢 أرسل رسالة البث (نص، صورة، رابط، فيديو، صوت):")
+points_state = {}
+send_user_state = {}
 
 @bot.message_handler(func=lambda message: True)
 @require_subscription  
@@ -859,31 +902,67 @@ def handle_all_messages(message):
     try:
         user_id = message.from_user.id
         
+        # معالجة البث
         if user_id in broadcast_state:
-            if broadcast_state[user_id] == 'waiting_message':
-                success_count = 0
-                total_users = len(memory.user_stats)
+            broadcast_type = broadcast_state[user_id]['type']
+            success_count = 0
+            total_users = len(memory.user_stats)
+            
+            for chat_id in memory.user_stats.keys():
+                try:
+                    if broadcast_type == 'text' and message.text:
+                        bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
+                    elif broadcast_type == 'photo' and message.photo:
+                        bot.send_photo(chat_id, message.photo[-1].file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    elif broadcast_type == 'video' and message.video:
+                        bot.send_video(chat_id, message.video.file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    elif broadcast_type == 'audio' and message.audio:
+                        bot.send_audio(chat_id, message.audio.file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    elif broadcast_type == 'document' and message.document:
+                        bot.send_document(chat_id, message.document.file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    success_count += 1
+                except:
+                    continue
+            
+            bot.send_message(user_id, f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم")
+            broadcast_state.pop(user_id, None)
+            return
+        
+        # معالجة إرسال لمستخدم معين
+        if user_id in send_user_state:
+            if send_user_state[user_id]['step'] == 'waiting_user':
+                try:
+                    target_user_id = int(message.text)
+                    send_user_state[user_id]['target_user'] = target_user_id
+                    send_user_state[user_id]['step'] = 'waiting_content'
+                    bot.send_message(user_id, "📤 أرسل المحتوى الذي تريد إرساله:")
+                    return
+                except:
+                    bot.send_message(user_id, "❌ أدخل رقم مستخدم صحيح!")
+                    return
+            
+            elif send_user_state[user_id]['step'] == 'waiting_content':
+                target_user_id = send_user_state[user_id]['target_user']
+                try:
+                    if message.text:
+                        bot.send_message(target_user_id, f"📩 رسالة من الإدارة:\n\n{message.text}")
+                    elif message.photo:
+                        bot.send_photo(target_user_id, message.photo[-1].file_id, caption=message.caption or "📩 رسالة من الإدارة")
+                    elif message.video:
+                        bot.send_video(target_user_id, message.video.file_id, caption=message.caption or "📩 رسالة من الإدارة")
+                    elif message.audio:
+                        bot.send_audio(target_user_id, message.audio.file_id, caption=message.caption or "📩 رسالة من الإدارة")
+                    elif message.document:
+                        bot.send_document(target_user_id, message.document.file_id, caption=message.caption or "📩 رسالة من الإدارة")
+                    
+                    bot.send_message(user_id, "✅ تم إرسال الرسالة للمستخدم")
+                except:
+                    bot.send_message(user_id, "❌ فشل في إرسال الرسالة!")
                 
-                for chat_id in memory.user_stats.keys():
-                    try:
-                        if message.text:
-                            bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
-                        elif message.photo:
-                            bot.send_photo(chat_id, message.photo[-1].file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                        elif message.video:
-                            bot.send_video(chat_id, message.video.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                        elif message.audio:
-                            bot.send_audio(chat_id, message.audio.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                        elif message.document:
-                            bot.send_document(chat_id, message.document.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-                        success_count += 1
-                    except:
-                        continue
-                
-                bot.send_message(user_id, f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم")
-                broadcast_state.pop(user_id, None)
+                send_user_state.pop(user_id, None)
                 return
         
+        # معالجة حالات أخرى
         if user_id in admin_state:
             if admin_state[user_id] == 'waiting_admin_id':
                 try:
@@ -926,6 +1005,32 @@ def handle_all_messages(message):
                     bot.send_message(user_id, "❌ خطأ في إضافة VIP!")
                 return
         
+        if user_id in points_state:
+            if points_state[user_id]['action'] == 'add':
+                try:
+                    target_user_id = points_state[user_id]['user_id']
+                    points = int(message.text)
+                    if memory.add_points(target_user_id, points):
+                        bot.send_message(user_id, f"✅ تمت إضافة {points} نقطة للمستخدم")
+                    else:
+                        bot.send_message(user_id, "❌ خطأ في إضافة النقاط!")
+                    points_state.pop(user_id, None)
+                except:
+                    bot.send_message(user_id, "❌ أدخل رقم صحيح!")
+                return
+            elif points_state[user_id]['action'] == 'remove':
+                try:
+                    target_user_id = points_state[user_id]['user_id']
+                    points = int(message.text)
+                    if memory.remove_points(target_user_id, points):
+                        bot.send_message(user_id, f"✅ تم نزع {points} نقطة من المستخدم")
+                    else:
+                        bot.send_message(user_id, "❌ خطأ في نزع النقاط!")
+                    points_state.pop(user_id, None)
+                except:
+                    bot.send_message(user_id, "❌ أدخل رقم صحيح!")
+                return
+        
         if user_id in settings_state:
             if settings_state[user_id] == 'waiting_channel':
                 memory.update_settings({'required_channel': message.text})
@@ -950,6 +1055,7 @@ def handle_all_messages(message):
                 settings_state.pop(user_id, None)
                 return
         
+        # معالجة الرسائل العادية
         memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
         
         if memory.is_banned(user_id):
@@ -963,7 +1069,7 @@ def handle_all_messages(message):
         
         bot.send_chat_action(message.chat.id, 'typing')
         
-        response = AdvancedAIService.generate_response(user_id, message.text)
+        response = AIService.generate_response(user_id, message.text)
         
         if response:
             bot.send_message(message.chat.id, response)
@@ -973,6 +1079,7 @@ def handle_all_messages(message):
     except Exception as e:
         logger.error(f"❌ خطأ في المعالجة: {e}")
 
+# معالجة الأزرار
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     user_id = call.from_user.id
@@ -1012,30 +1119,71 @@ def handle_callback(call):
     elif call.data == "admin_vip":
         show_vip_management(call)
     elif call.data == "admin_broadcast":
-        handle_broadcast(call.message)
-        bot.answer_callback_query(call.id, "📢 أرسل رسالة البث")
+        show_broadcast_menu(call)
     elif call.data == "admin_ban":
         show_ban_management(call)
+    elif call.data == "admin_points":
+        show_points_menu(call)
     elif call.data == "admin_settings":
         show_settings_menu(call)
     elif call.data == "admin_back":
         show_admin_panel(call)
     
+    # أزرار البث
+    elif call.data.startswith("broadcast_"):
+        broadcast_type = call.data.split("_")[1]
+        broadcast_state[user_id] = {'type': broadcast_type}
+        bot.send_message(user_id, f"📢 أرسل {'النص' if broadcast_type == 'text' else 'الصورة' if broadcast_type == 'photo' else 'الفيديو' if broadcast_type == 'video' else 'الصوت' if broadcast_type == 'audio' else 'الملف'} الذي تريد بثه:")
+        bot.answer_callback_query(call.id, f"📢 بث {broadcast_type}")
+    
+    # أزرار الإدارة
     elif call.data == "add_admin":
         admin_state[user_id] = 'waiting_admin_id'
         bot.send_message(user_id, "👤 أرسل رقم المستخدم الذي تريد ترقيته إلى مشرف:")
         bot.answer_callback_query(call.id, "➕ إضافة مشرف")
+    
+    elif call.data == "remove_admin":
+        admin_state[user_id] = 'waiting_remove_admin_id'
+        bot.send_message(user_id, "👤 أرسل رقم المشرف الذي تريد إزالته:")
+        bot.answer_callback_query(call.id, "➖ إزالة مشرف")
     
     elif call.data == "add_ban":
         ban_state[user_id] = 'waiting_ban_id'
         bot.send_message(user_id, "🚫 أرسل رقم المستخدم الذي تريد حظره:")
         bot.answer_callback_query(call.id, "🚫 حظر مستخدم")
     
+    elif call.data == "remove_ban":
+        ban_state[user_id] = 'waiting_unban_id'
+        bot.send_message(user_id, "✅ أرسل رقم المستخدم الذي تريد إلغاء حظره:")
+        bot.answer_callback_query(call.id, "✅ إلغاء حظر")
+    
     elif call.data == "add_vip":
         vip_state[user_id] = 'waiting_vip_id'
         bot.send_message(user_id, "🌟 أرسل رقم المستخدم الذي تريد إضافته إلى VIP:")
         bot.answer_callback_query(call.id, "🌟 إضافة VIP")
     
+    elif call.data == "remove_vip":
+        vip_state[user_id] = 'waiting_remove_vip_id'
+        bot.send_message(user_id, "🌟 أرسل رقم المستخدم الذي تريد إزالته من VIP:")
+        bot.answer_callback_query(call.id, "➖ إزالة VIP")
+    
+    # أزرار النقاط
+    elif call.data == "add_points":
+        points_state[user_id] = {'action': 'add', 'step': 'waiting_user'}
+        bot.send_message(user_id, "🎯 أرسل رقم المستخدم الذي تريد إضافة نقاط له:")
+        bot.answer_callback_query(call.id, "➕ إضافة نقاط")
+    
+    elif call.data == "remove_points":
+        points_state[user_id] = {'action': 'remove', 'step': 'waiting_user'}
+        bot.send_message(user_id, "🎯 أرسل رقم المستخدم الذي تريد نزع نقاط منه:")
+        bot.answer_callback_query(call.id, "➖ نزع نقاط")
+    
+    elif call.data == "send_to_user":
+        send_user_state[user_id] = {'step': 'waiting_user'}
+        bot.send_message(user_id, "📤 أرسل رقم المستخدم الذي تريد إرسال رسالة له:")
+        bot.answer_callback_query(call.id, "📤 إرسال لمستخدم")
+    
+    # إعدادات
     elif call.data == "settings_channel":
         settings_state[user_id] = 'waiting_channel'
         bot.send_message(user_id, "📢 أرسل رابط القناة (مثال: @channel_name):")
@@ -1058,6 +1206,7 @@ def handle_callback(call):
         bot.send_message(user_id, "🖼️ أرسل الصورة الترحيبية:")
         bot.answer_callback_query(call.id, "🖼️ الصورة الترحيبية")
     
+    # معالجة المستخدمين
     elif call.data.startswith("view_conversation_"):
         view_user_conversation(call)
     elif call.data.startswith("view_recent_"):
@@ -1070,10 +1219,15 @@ def handle_callback(call):
         ban_user_action(call)
     elif call.data.startswith("unban_user_"):
         unban_user_action(call)
+    elif call.data.startswith("add_points_"):
+        add_points_action(call)
+    elif call.data.startswith("remove_points_"):
+        remove_points_action(call)
 
+# دوال العرض
 def show_admin_panel(call):
     admin_text = f"""
-👨‍💻 **لوحة تحكم موبي الشرير**
+👑 **لوحة تحكم موبي**
 
 📊 **اختر الإدارة:**
 • 📊 الإحصائيات
@@ -1083,6 +1237,7 @@ def show_admin_panel(call):
 • 🌟 إدارة VIP
 • 📢 البث للمستخدمين
 • 🚫 إدارة الحظر
+• 🎯 النقاط
 • ⚙️ الإعدادات
 
 ✅ **النظام تحت إشرافك**
@@ -1097,9 +1252,10 @@ def show_admin_stats(call):
         vip_count = len(memory.get_vip_list())
         banned_count = len(memory.banned_users)
         total_messages = sum(stats['message_count'] for stats in memory.user_stats.values())
+        total_points = sum(stats.get('points', 0) for stats in memory.user_stats.values())
         
         stats_text = f"""
-📊 **إحصائيات موبي الشرير**
+📊 **إحصائيات موبي**
 
 👥 **المستخدمين:**
 • الإجمالي: {total_users}
@@ -1107,6 +1263,7 @@ def show_admin_stats(call):
 • VIP: {vip_count}
 • المحظورين: {banned_count}
 • الرسائل: {total_messages}
+• النقاط: {total_points}
 
 🕒 **التحديث:** {datetime.now().strftime('%H:%M:%S')}
         """
@@ -1126,16 +1283,19 @@ def show_users_list(call):
         for i, (user_id, stats) in enumerate(sorted_users[:10], 1):
             status = "🌟" if stats.get('is_vip') else "🛡️" if stats.get('is_admin') else "✅"
             username = stats.get('username', 'بدون معرف')
+            points = stats.get('points', 0)
             users_text += f"{i}. {status} {stats['first_name']} (@{username})\n"
-            users_text += f"   📝 {stats['message_count']} رسالة\n\n"
+            users_text += f"   📝 {stats['message_count']} رسالة | 🎯 {points} نقطة\n\n"
         
         users_text += f"📊 الإجمالي: {len(users)} مستخدم"
         
         keyboard = InlineKeyboardMarkup(row_width=2)
         view_btn = InlineKeyboardButton("💬 عرض المحادثات", callback_data="admin_conversations")
         recent_btn = InlineKeyboardButton("🕒 الرسائل الأخيرة", callback_data="view_recent_all")
+        points_btn = InlineKeyboardButton("🎯 إدارة النقاط", callback_data="admin_points")
         back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
         keyboard.add(view_btn, recent_btn)
+        keyboard.add(points_btn)
         keyboard.add(back_btn)
         
         bot.edit_message_text(users_text, call.message.chat.id, call.message.message_id,
@@ -1151,12 +1311,14 @@ def show_admins_management(call):
         
         for i, admin in enumerate(admins, 1):
             admins_text += f"{i}. {admin['first_name']} (@{admin['username']})\n"
-            admins_text += f"   📝 {admin['message_count']} رسالة\n\n"
+            admins_text += f"   📝 {admin['message_count']} رسالة | 🎯 {admin['points']} نقطة\n\n"
         
         keyboard = InlineKeyboardMarkup()
         add_admin_btn = InlineKeyboardButton("➕ إضافة مشرف", callback_data="add_admin")
+        remove_admin_btn = InlineKeyboardButton("➖ إزالة مشرف", callback_data="remove_admin")
         back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
-        keyboard.add(add_admin_btn, back_btn)
+        keyboard.add(add_admin_btn, remove_admin_btn)
+        keyboard.add(back_btn)
         
         bot.edit_message_text(admins_text, call.message.chat.id, call.message.message_id,
                             reply_markup=keyboard, parse_mode='Markdown')
@@ -1205,17 +1367,26 @@ def show_vip_management(call):
         else:
             for i, user in enumerate(vip_users, 1):
                 vip_text += f"{i}. {user['first_name']} (@{user['username']})\n"
+                vip_text += f"   📝 {user['message_count']} رسالة | 🎯 {user['points']} نقطة\n\n"
         
         keyboard = InlineKeyboardMarkup()
         add_vip_btn = InlineKeyboardButton("➕ إضافة VIP", callback_data="add_vip")
+        remove_vip_btn = InlineKeyboardButton("➖ إزالة VIP", callback_data="remove_vip")
         back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
-        keyboard.add(add_vip_btn, back_btn)
+        keyboard.add(add_vip_btn, remove_vip_btn)
+        keyboard.add(back_btn)
         
         bot.edit_message_text(vip_text, call.message.chat.id, call.message.message_id,
                             reply_markup=keyboard, parse_mode='Markdown')
         bot.answer_callback_query(call.id, "🌟 إدارة VIP")
     except Exception as e:
         logger.error(f"❌ خطأ في إدارة VIP: {e}")
+
+def show_broadcast_menu(call):
+    broadcast_text = "📢 **اختر نوع البث:**\n\nيمكنك إرسال:\n• 📝 نصوص\n• 🖼️ صور\n• 🎥 فيديوهات\n• 🎵 صوتيات\n• 📄 ملفات"
+    bot.edit_message_text(broadcast_text, call.message.chat.id, call.message.message_id,
+                        reply_markup=create_broadcast_menu(), parse_mode='Markdown')
+    bot.answer_callback_query(call.id, "📢 البث")
 
 def show_ban_management(call):
     try:
@@ -1234,8 +1405,10 @@ def show_ban_management(call):
         
         keyboard = InlineKeyboardMarkup()
         add_ban_btn = InlineKeyboardButton("➕ حظر مستخدم", callback_data="add_ban")
+        remove_ban_btn = InlineKeyboardButton("✅ إلغاء حظر", callback_data="remove_ban")
         back_btn = InlineKeyboardButton("🔙 رجوع", callback_data="admin_back")
-        keyboard.add(add_ban_btn, back_btn)
+        keyboard.add(add_ban_btn, remove_ban_btn)
+        keyboard.add(back_btn)
         
         bot.edit_message_text(ban_text, call.message.chat.id, call.message.message_id,
                             reply_markup=keyboard, parse_mode='Markdown')
@@ -1243,9 +1416,15 @@ def show_ban_management(call):
     except Exception as e:
         logger.error(f"❌ خطأ في إدارة الحظر: {e}")
 
+def show_points_menu(call):
+    points_text = "🎯 **إدارة النقاط:**\n\nيمكنك:\n• ➕ إضافة نقاط للمستخدمين\n• ➖ نزع نقاط من المستخدمين\n• 📤 إرسال رسائل لمستخدم معين"
+    bot.edit_message_text(points_text, call.message.chat.id, call.message.message_id,
+                        reply_markup=create_points_menu(), parse_mode='Markdown')
+    bot.answer_callback_query(call.id, "🎯 النقاط")
+
 def show_settings_menu(call):
     settings_text = f"""
-⚙️ **إعدادات موبي الشرير**
+⚙️ **إعدادات موبي**
 
 📢 **القناة:** {memory.settings.get('required_channel', 'غير معينة')}
 🔐 **الاشتراك الإجباري:** {'✅ مفعل' if memory.settings.get('subscription_enabled', False) else '❌ معطل'}
@@ -1381,21 +1560,53 @@ def unban_user_action(call):
     except Exception as e:
         logger.error(f"❌ خطأ في إلغاء الحظر: {e}")
 
+def add_points_action(call):
+    try:
+        user_id = int(call.data.split("_")[2])
+        points_state[call.from_user.id] = {'action': 'add', 'user_id': user_id}
+        bot.send_message(call.from_user.id, "🎯 أرسل عدد النقاط التي تريد إضافتها:")
+        bot.answer_callback_query(call.id, "➕ إضافة نقاط")
+    except Exception as e:
+        logger.error(f"❌ خطأ في إضافة النقاط: {e}")
+
+def remove_points_action(call):
+    try:
+        user_id = int(call.data.split("_")[2])
+        points_state[call.from_user.id] = {'action': 'remove', 'user_id': user_id}
+        bot.send_message(call.from_user.id, "🎯 أرسل عدد النقاط التي تريد نزعها:")
+        bot.answer_callback_query(call.id, "➖ نزع نقاط")
+    except Exception as e:
+        logger.error(f"❌ خطأ في نزع النقاط: {e}")
+
+# تشغيل البوت مع الحفاظ على الحياة
+def keep_alive():
+    while True:
+        try:
+            # إرسال طلب للحفاظ على النشاط
+            logger.info("🫀 البوت حي ويعمل...")
+            threading.Event().wait(300)  # انتظر 5 دقائق
+        except Exception as e:
+            logger.error(f"❌ خطأ في الحفاظ على الحياة: {e}")
+
 def main():
-    logger.info("🚀 بدء تشغيل موبي الشرير VIP مع جميع الميزات...")
+    logger.info("🚀 بدء تشغيل موبي مع جميع الميزات...")
     
     try:
         bot.remove_webhook()
         
+        # اختبار النظام
         try:
-            test_url = f"{AdvancedAIService.API_URL}?text=test"
+            test_url = f"{AIService.API_URL}?text=test"
             response = requests.get(test_url, timeout=10)
-            logger.info(f"✅ موبي يعمل: {response.status_code}")
+            logger.info(f"✅ النظام يعمل: {response.status_code}")
         except Exception as api_error:
-            logger.warning(f"⚠️ موبي غير متاح: {api_error}")
+            logger.warning(f"⚠️ النظام غير متاح: {api_error}")
         
-        logger.info(f"✅ موبي الشرير جاهز - المطور: {DEVELOPER_USERNAME}")
+        logger.info(f"✅ موبي جاهز - المطور: {DEVELOPER_USERNAME}")
         logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
+        
+        # بدء خيط الحفاظ على الحياة
+        threading.Thread(target=keep_alive, daemon=True).start()
         
         bot.infinity_polling(timeout=60, long_polling_timeout=60)
         
