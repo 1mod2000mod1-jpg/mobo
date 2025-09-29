@@ -1740,21 +1740,35 @@ def main():
         import time
         time.sleep(10)
         main()
-# إنشاء التطبيق
-    application = Application.builder().token(BOT_TOKEN).build()
+def main():
+    logger.info("🚀 بدء تشغيل موبي مع جميع الميزات...")
+    
+    try:
+        bot.remove_webhook()
+        
+        # اختبار النظام
+        try:
+            test_url = f"{AIService.API_URL}?text=test"
+            response = requests.get(test_url, timeout=10)
+            logger.info(f"✅ النظام يعمل: {response.status_code}")
+        except Exception as api_error:
+            logger.warning(f"⚠️ النظام غير متاح: {api_error}")
+        
+        logger.info(f"✅ موبي جاهز - المطور: {DEVELOPER_USERNAME}")
+        logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
+        
+        # بدء خيط الحفاظ على الحياة
+        threading.Thread(target=keep_alive, daemon=True).start()
+        
+        bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في التشغيل: {e}")
+        import time
+        time.sleep(10)
+        main()
 
-    # إضافة المعالجات
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("ping", ping_command))
-    application.add_handler(CommandHandler("status", status_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_error_handler(error_handler)
-
-    # البدء
-    logger.info("🚀 بدء تشغيل البوت...")
-    application.run_polling()
-    logger.info("✅ البوت يعمل!")
-
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     main()
