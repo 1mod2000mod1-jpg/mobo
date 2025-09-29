@@ -267,6 +267,7 @@ class AdvancedAIService:
         "https://api.deepseek.com/chat/completions",
         "https://api.openai.com/v1/chat/completions"
     ]
+    
     @staticmethod
     def custom_api_call(message, user_id):
     """الاتصال بالـ API الخاص واستخراج الرد فقط"""
