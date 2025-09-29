@@ -1740,6 +1740,22 @@ def main():
         import time
         time.sleep(10)
         main()
+# تحقق من أن البوت يعمل أونلاين
+def check_online_status():
+    try:
+        bot_info = bot.get_me()
+        logger.info(f"✅ البوت يعمل أونلاين: @{bot_info.username}")
+        logger.info(f"🌐 حالة السيرفر: نشط")
+        logger.info(f"👤 اسم البوت: {bot_info.first_name}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ البوت غير متصل بالإنترنت: {e}")
+        return False
 
+# تحقق من الاتصال عند البدء
+if check_online_status():
+    logger.info("🚀 البوت جاهز للعمل الأونلاين!")
+else:
+    logger.error("❌ فشل الاتصال بالإنترنت!")
 if __name__ == "__main__":
     main()
