@@ -1,11 +1,12 @@
 services:
   - type: web
-    name: bot-tadil-cod
+    name: adati tadil cod
     env: python
     plan: free
-    branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: python WormGPT.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
-        sync: false
+        value: 8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4
+      - key: https://adati-tadil-cod.onrender.com
+        value: 
