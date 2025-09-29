@@ -13,12 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, CommandHandler
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+import watchdog
 import psutil
-import os
-import sys
 # إعداد التسجيل
 logging.basicConfig(
     level=logging.INFO,
