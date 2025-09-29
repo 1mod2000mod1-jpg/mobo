@@ -1010,7 +1010,7 @@ settings_state = {}
 points_state = {}
 send_user_state = {}
 
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'audio', 'document'])
 @require_subscription  
 def handle_all_messages(message):
     try:
@@ -1170,7 +1170,15 @@ def handle_all_messages(message):
                 return
         
         # معالجة الرسائل العادية
-        memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
+        if message.content_type == 'text':
+            message_text = message.text
+        else:
+            if message.caption:
+                message_text = f"[{message.content_type.upper()}] {message.caption}"
+            else:
+                message_text = f"[{message.content_type.upper()}] تم إرسال وسائط"
+        
+        memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message_text)
         
         if memory.is_banned(user_id):
             bot.send_message(message.chat.id, "❌ تم حظرك من استخدام البوت.")
@@ -1181,12 +1189,15 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, f"❌ انتهت رسائلك المجانية! ({status})\n\n💎 ترقى إلى VIP للاستخدام غير المحدود!\n/upgrade للترقية")
             return
         
-        bot.send_chat_action(message.chat.id, 'typing')
-        
-        response = AIService.generate_response(user_id, message.text)
-        
-        if response:
-            bot.send_message(message.chat.id, response)
+        if message.content_type == 'text':
+            bot.send_chat_action(message.chat.id, 'typing')
+            
+            response = AIService.generate_response(user_id, message.text)
+            
+            if response:
+                bot.send_message(message.chat.id, response)
+        else:
+            bot.reply_to(message, "📁 **تم استلام الوسائط بنجاح!**\n\n💫 موبي يدعم الوسائط، لكن الذكاء الاصطناعي يحتاج إلى نص للرد. اكتب سؤالك!", parse_mode='Markdown')
         
         logger.info(f"💬 معالجة رسالة من {message.from_user.first_name}")
         
