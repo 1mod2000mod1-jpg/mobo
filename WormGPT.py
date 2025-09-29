@@ -30,7 +30,7 @@ try:
 except ImportError as e:
     print(f"خطأ في التثبيت: {e}")
 
-from telegram.ext import Updater, CommandHandler
+from telegram.ext import Application, CommandHandler
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import os
@@ -42,18 +42,21 @@ class ChangeHandler(FileSystemEventHandler):
             print(f"تم تعديل الملف: {event.src_path}")
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
-def start(update, context):
-    update.message.reply_text('Hello!')
+async def start(update, context):
+    await update.message.reply_text('Hello!')
 
 def main():
-    # استبدل 'YOUR_TELEGRAM_BOT_TOKEN_HERE' بالتوكن الحقيقي
-    updater = Updater("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4")
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
+    # استخدام Application بدلاً من Updater للإصدارات الحديثة
+    application = Application.builder().token("8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4").build()
+    
+    # إضافة handler
+    application.add_handler(CommandHandler("start", start))
 
-    updater.start_polling()
-    updater.idle()
+    # بدء البوت
+    print("بدء البوت...")
+    application.run_polling()
 
+    # جزء watchdog (لن يتم تنفيذه لأن run_polling() تمنع)
     event_handler = ChangeHandler()
     observer = Observer()
     observer.schedule(event_handler, path='.', recursive=False)
@@ -61,7 +64,7 @@ def main():
 
     try:
         while True:
-            pass
+            time.sleep(1)
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
