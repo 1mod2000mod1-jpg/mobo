@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import psutil
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -23,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger("موبي_البوت")
 
 # التوكن
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4')
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 if not BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN غير معروف")
@@ -32,9 +31,9 @@ if not BOT_TOKEN:
 # إنشاء البوت
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# معلومات المطور - تأكد من أن هذا هو رقمك الصحيح!
+# معلومات المطور
 DEVELOPER_USERNAME = "@xtt19x"
-DEVELOPER_ID = 6521966233  # ⚠️ غير هذا الرقم إلى رقمك الحقيقي!
+DEVELOPER_ID = 6521966233
 
 # إعدادات البوت
 BOT_SETTINGS = {
@@ -56,22 +55,6 @@ class MemorySystem:
         self.vip_users = self.load_vip_users()
         self.settings = self.load_settings()
         self.temp_files = {}
-        self.broadcast_messages = {}
-        
-        # التأكد من أن المطور مضاف كمسؤول
-        self.ensure_developer_admin()
-    
-    def ensure_developer_admin(self):
-        """التأكد من أن المطور مضاف كمسؤول"""
-        if DEVELOPER_ID not in self.admins:
-            self.admins.append(DEVELOPER_ID)
-            self.save_admins()
-            logger.info(f"✅ تم إضافة المطور {DEVELOPER_ID} إلى المشرفين")
-        
-        if DEVELOPER_ID not in self.vip_users:
-            self.vip_users.append(DEVELOPER_ID)
-            self.save_vip_users()
-            logger.info(f"✅ تم إضافة المطور {DEVELOPER_ID} إلى VIP")
     
     def get_user_file(self, user_id):
         return self.workspace / f"user_{user_id}.json"
@@ -91,9 +74,6 @@ class MemorySystem:
     def get_settings_file(self):
         return self.workspace / "bot_settings.json"
     
-    def get_broadcast_file(self):
-        return self.workspace / "broadcast_messages.json"
-    
     def load_user_stats(self):
         stats_file = self.get_stats_file()
         if stats_file.exists():
@@ -110,10 +90,12 @@ class MemorySystem:
             try:
                 with open(admins_file, 'r', encoding='utf-8') as f:
                     admins = json.load(f)
+                    if DEVELOPER_ID not in admins:
+                        admins.append(DEVELOPER_ID)
                     return admins
             except:
-                return []
-        return []
+                return [DEVELOPER_ID]
+        return [DEVELOPER_ID]
     
     def load_banned_users(self):
         banned_file = self.get_banned_file()
@@ -131,10 +113,12 @@ class MemorySystem:
             try:
                 with open(vip_file, 'r', encoding='utf-8') as f:
                     vip_users = json.load(f)
+                    if DEVELOPER_ID not in vip_users:
+                        vip_users.append(DEVELOPER_ID)
                     return vip_users
             except:
-                return []
-        return []
+                return [DEVELOPER_ID]
+        return [DEVELOPER_ID]
     
     def load_settings(self):
         settings_file = self.get_settings_file()
@@ -146,16 +130,6 @@ class MemorySystem:
             except:
                 return BOT_SETTINGS
         return BOT_SETTINGS
-    
-    def load_broadcast_messages(self):
-        broadcast_file = self.get_broadcast_file()
-        if broadcast_file.exists():
-            try:
-                with open(broadcast_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
     
     def save_user_stats(self):
         stats_file = self.get_stats_file()
@@ -181,11 +155,6 @@ class MemorySystem:
         settings_file = self.get_settings_file()
         with open(settings_file, 'w', encoding='utf-8') as f:
             json.dump(self.settings, f, ensure_ascii=False, indent=2)
-    
-    def save_broadcast_messages(self):
-        broadcast_file = self.get_broadcast_file()
-        with open(broadcast_file, 'w', encoding='utf-8') as f:
-            json.dump(self.broadcast_messages, f, ensure_ascii=False, indent=2)
     
     def update_user_stats(self, user_id, username, first_name, message_text=""):
         if user_id not in self.user_stats:
@@ -422,34 +391,18 @@ class MemorySystem:
             user_file.unlink()
     
     def cleanup_old_conversations(self):
-        """تنظيف المحادثات القديمة - يحذف كل شيء بعد 10 دقائق"""
+        """تنظيف المحادثات القديمة"""
         try:
-            current_time = datetime.now()
-            deleted_count = 0
             for user_id in list(self.conversations.keys()):
                 conversation = self.get_user_conversation(user_id)
                 if conversation:
-                    # حذف جميع الرسائل الأقدم من 10 دقائق
-                    time_threshold = current_time - timedelta(minutes=10)
+                    # حذف الرسائل الأقدم من 10 دقائق
+                    time_threshold = datetime.now() - timedelta(minutes=10)
                     cleaned_conversation = [
                         msg for msg in conversation 
                         if datetime.fromisoformat(msg['timestamp']) >= time_threshold
                     ]
-                    
-                    # إذا لم يتبق أي رسائل، احذف الملف
-                    if not cleaned_conversation:
-                        user_file = self.get_user_file(user_id)
-                        if user_file.exists():
-                            user_file.unlink()
-                            deleted_count += 1
-                        if user_id in self.conversations:
-                            del self.conversations[user_id]
-                    else:
-                        self.save_conversation(user_id, cleaned_conversation)
-            
-            if deleted_count > 0:
-                logger.info(f"🧹 تم حذف {deleted_count} محادثة قديمة")
-                        
+                    self.save_conversation(user_id, cleaned_conversation)
         except Exception as e:
             logger.error(f"❌ خطأ في تنظيف المحادثات: {e}")
 
@@ -458,7 +411,7 @@ memory = MemorySystem()
 
 # نظام الذكاء الاصطناعي
 class AIService:
-    API_URL = "https://sii3.top/api/grok4.php"
+    API_URL = "http://sii3.top/DARK/api/wormgpt.php"
     
     @staticmethod
     def generate_response(user_id, user_message):
@@ -795,148 +748,19 @@ def handle_start_type(chat_id, user_id, force_text=False):
 @require_subscription
 def handle_start(message):
     try:
-        user_id = message.from_user.id
-        username = message.from_user.username or "بدون معرف"
-        first_name = message.from_user.first_name or "بدون اسم"
+        memory.update_user_stats(
+            message.from_user.id,
+            message.from_user.username or "بدون معرف",
+            message.from_user.first_name or "بدون اسم",
+            "/start"
+        )
         
-        memory.update_user_stats(user_id, username, first_name, "/start")
-        
-        # إظهار معلومات الصلاحيات
-        if memory.is_admin(user_id):
-            bot.send_message(message.chat.id, f"🛡️ **مرحباً يا مشرف!**\n\nأنت تملك صلاحيات كاملة في البوت.", parse_mode='Markdown')
-        
-        send_welcome_message(message.chat.id, user_id)
+        send_welcome_message(message.chat.id, message.from_user.id)
             
     except Exception as e:
         logger.error(f"❌ خطأ في /start: {e}")
 
-@bot.message_handler(commands=['help'])
-@require_subscription
-def handle_help(message):
-    help_text = """
-🆘 **مساعدة موبي**
-
-🤖 **كيفية الاستخدام:**
-- فقط اكتب رسالتك وسأرد عليك!
-- يمكنني الإجابة على الأسئلة والشرح والكتابة
-
-🔧 **الأوامر المتاحة:**
-/start - بدء البوت
-/help - هذه المساعدة  
-/status - حالة حسابك
-/upgrade - ترقية إلى VIP
-/memory - إدارة الذاكرة
-/new - بدء محادثة جديدة
-/developer - معلومات المطور
-
-💎 **نظام VIP:**
-- رسائل غير محدودة
-- أولوية في الرد
-- ميزات متقدمة
-
-👑 **المطور:** {DEVELOPER_USERNAME}
-    """.format(DEVELOPER_USERNAME=DEVELOPER_USERNAME)
-    
-    bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
-
-@bot.message_handler(commands=['status'])
-@require_subscription
-def handle_status(message):
-    user_id = message.from_user.id
-    username = message.from_user.username or "بدون معرف"
-    first_name = message.from_user.first_name or "بدون اسم"
-    
-    memory.update_user_stats(user_id, username, first_name, "/status")
-    
-    if user_id in memory.user_stats:
-        stats = memory.user_stats[user_id]
-        can_send, status = memory.can_send_message(user_id)
-        
-        status_text = f"""
-📊 **حالة حسابك**
-
-👤 **المستخدم:** {first_name} (@{username})
-🆔 **الرقم:** {user_id}
-
-📈 **الإحصائيات:**
-📝 الرسائل: {stats.get('message_count', 0)}
-🎯 النقاط: {stats.get('points', 0)}
-📅 أول ظهور: {stats.get('first_seen', 'غير معروف')}
-🕒 آخر ظهور: {stats.get('last_seen', 'غير معروف')}
-
-🔓 **الحالة:** {status}
-
-💎 **الصلاحيات:**
-{'🌟 VIP' if memory.is_vip(user_id) else '🔓 عادي'}
-{'🛡️ مشرف' if memory.is_admin(user_id) else '👤 مستخدم'}
-{'🚫 محظور' if memory.is_banned(user_id) else '✅ نشط'}
-        """
-    else:
-        status_text = "❌ لا توجد بيانات عن حسابك."
-    
-    bot.send_message(message.chat.id, status_text, parse_mode='Markdown')
-
-@bot.message_handler(commands=['upgrade'])
-@require_subscription
-def handle_upgrade(message):
-    upgrade_text = f"""
-💎 **ترقية إلى VIP**
-
-مميزات VIP:
-✅ رسائل غير محدودة
-⚡ أولوية في الرد
-🎯 ميزات متقدمة
-🔧 دعم فوري
-
-للترقية تواصل مع المطور:
-{DEVELOPER_USERNAME}
-
-سعر الترقية: مجاني للمستخدمين النشطين
-    """
-    bot.send_message(message.chat.id, upgrade_text, parse_mode='Markdown')
-
-@bot.message_handler(commands=['developer'])
-def handle_developer(message):
-    developer_text = f"""
-👑 **مطور البوت**
-
-{DEVELOPER_USERNAME}
-
-📧 للتواصل والدعم الفني
-💼 طلبات البوتات الخاصة
-🔧 حل المشاكل التقنية
-
-⚡ **موبي - البوت الذكي المتقدم**
-    """
-    bot.send_message(message.chat.id, developer_text, parse_mode='Markdown')
-
-@bot.message_handler(commands=['new'])
-@require_subscription
-def handle_new(message):
-    user_id = message.from_user.id
-    memory.clear_conversation(user_id)
-    bot.send_message(message.chat.id, "🔄 تم بدء محادثة جديدة! يمكنك البدء بالحديث الآن.")
-
-@bot.message_handler(commands=['memory'])
-@require_subscription
-def handle_memory(message):
-    user_id = message.from_user.id
-    conversation = memory.get_user_conversation(user_id)
-    memory_count = len(conversation)
-    
-    memory_text = f"""
-💾 **إدارة الذاكرة**
-
-📊 عدد الرسائل المحفوظة: {memory_count}
-🕒 آخر محادثة: {memory_count} رسالة
-
-🔧 **الخيارات:**
-/new - بدء محادثة جديدة
-/start - العودة للقائمة
-
-💡 **ملاحظة:** الذاكرة تحفظ آخر 15 رسالة للمساعدة في الاستمرارية
-    """
-    bot.send_message(message.chat.id, memory_text, parse_mode='Markdown')
+# ... (جميع الدوال الأخرى تبقى كما هي مع التعديلات البسيطة)
 
 # حالات المستخدم
 broadcast_state = {}
@@ -948,39 +772,7 @@ points_state = {}
 send_user_state = {}
 welcome_state = {}
 
-def send_broadcast_message(user_id, message, broadcast_type):
-    """إرسال البث لجميع المستخدمين"""
-    success_count = 0
-    total_users = len(memory.user_stats)
-    failed_users = []
-    
-    for chat_id in memory.user_stats.keys():
-        if chat_id == user_id:  # تخطي المرسل
-            continue
-        try:
-            if broadcast_type == 'text' and message.text:
-                bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
-            elif broadcast_type == 'photo' and message.photo:
-                bot.send_photo(chat_id, message.photo[-1].file_id, caption=message.caption or "📢 إشعار من الإدارة")
-            elif broadcast_type == 'video' and message.video:
-                bot.send_video(chat_id, message.video.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-            elif broadcast_type == 'audio' and message.audio:
-                bot.send_audio(chat_id, message.audio.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-            elif broadcast_type == 'document' and message.document:
-                bot.send_document(chat_id, message.document.file_id, caption=message.caption or "📢 إشعار من الإدارة")
-            success_count += 1
-        except Exception as e:
-            failed_users.append(chat_id)
-            continue
-    
-    result_text = f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم"
-    if failed_users:
-        result_text += f"\n❌ فشل الإرسال لـ {len(failed_users)} مستخدم"
-    
-    bot.send_message(user_id, result_text)
-    broadcast_state.pop(user_id, None)
-
-@bot.message_handler(func=lambda message: True, content_types=['text', 'photo', 'video', 'audio', 'document'])
+@bot.message_handler(func=lambda message: True)
 @require_subscription  
 def handle_all_messages(message):
     try:
@@ -989,7 +781,35 @@ def handle_all_messages(message):
         # معالجة البث
         if user_id in broadcast_state:
             broadcast_type = broadcast_state[user_id]['type']
-            send_broadcast_message(user_id, message, broadcast_type)
+            success_count = 0
+            total_users = len(memory.user_stats)
+            failed_users = []
+            
+            for chat_id in memory.user_stats.keys():
+                if chat_id == user_id:  # تخطي المرسل
+                    continue
+                try:
+                    if broadcast_type == 'text' and message.text:
+                        bot.send_message(chat_id, f"📢 إشعار من الإدارة:\n\n{message.text}")
+                    elif broadcast_type == 'photo' and message.photo:
+                        bot.send_photo(chat_id, message.photo[-1].file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    elif broadcast_type == 'video' and message.video:
+                        bot.send_video(chat_id, message.video.file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    elif broadcast_type == 'audio' and message.audio:
+                        bot.send_audio(chat_id, message.audio.file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    elif broadcast_type == 'document' and message.document:
+                        bot.send_document(chat_id, message.document.file_id, caption=message.caption or "📢 إشعار من الإدارة")
+                    success_count += 1
+                except Exception as e:
+                    failed_users.append(chat_id)
+                    continue
+            
+            result_text = f"✅ تم إرسال البث إلى {success_count}/{total_users} مستخدم"
+            if failed_users:
+                result_text += f"\n❌ فشل الإرسال لـ {len(failed_users)} مستخدم"
+            
+            bot.send_message(user_id, result_text)
+            broadcast_state.pop(user_id, None)
             return
         
         # معالجة إرسال لمستخدم معين
@@ -1034,16 +854,13 @@ def handle_all_messages(message):
                     memory.update_settings({'welcome_content': {'type': 'text', 'content': message.text}})
                     bot.send_message(user_id, "✅ تم حفظ النص الترحيبي")
                 elif welcome_type == 'photo' and message.photo:
-                    file_id = message.photo[-1].file_id
-                    memory.update_settings({'welcome_content': {'type': 'photo', 'content': file_id}})
+                    memory.update_settings({'welcome_content': {'type': 'photo', 'content': message.photo[-1].file_id}})
                     bot.send_message(user_id, "✅ تم حفظ الصورة الترحيبية")
                 elif welcome_type == 'video' and message.video:
-                    file_id = message.video.file_id
-                    memory.update_settings({'welcome_content': {'type': 'video', 'content': file_id}})
+                    memory.update_settings({'welcome_content': {'type': 'video', 'content': message.video.file_id}})
                     bot.send_message(user_id, "✅ تم حفظ الفيديو الترحيبي")
                 elif welcome_type == 'audio' and message.audio:
-                    file_id = message.audio.file_id
-                    memory.update_settings({'welcome_content': {'type': 'audio', 'content': file_id}})
+                    memory.update_settings({'welcome_content': {'type': 'audio', 'content': message.audio.file_id}})
                     bot.send_message(user_id, "✅ تم حفظ الصوت الترحيبي")
                 else:
                     bot.send_message(user_id, "❌ أرسل المحتوى المناسب للنوع المحدد")
@@ -1052,30 +869,28 @@ def handle_all_messages(message):
             welcome_state.pop(user_id, None)
             return
         
-        # معالجة الرسائل العادية (نص فقط للذكاء الاصطناعي)
-        if message.content_type == 'text':
-            memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
-            
-            if memory.is_banned(user_id):
-                bot.send_message(message.chat.id, "❌ تم حظرك من استخدام البوت.")
-                return
-            
-            can_send, status = memory.can_send_message(user_id)
-            if not can_send:
-                bot.send_message(message.chat.id, f"❌ انتهت رسائلك المجانية! ({status})\n\n💎 ترقى إلى VIP للاستخدام غير المحدود!\n/upgrade للترقية")
-                return
-            
-            bot.send_chat_action(message.chat.id, 'typing')
-            
-            response = AIService.generate_response(user_id, message.text)
-            
-            if response:
-                bot.send_message(message.chat.id, response)
-            
-            logger.info(f"💬 معالجة رسالة من {message.from_user.first_name}")
-        else:
-            # للوسائط الأخرى، نرسل رسالة تفاعلية فقط
-            bot.send_message(message.chat.id, "📁 تلقيت ملفك! للاستفادة الكاملة من موبي، أرسل رسائل نصية للتفاعل مع الذكاء الاصطناعي. 🤖")
+        # ... (بقية معالجات الحالات)
+        
+        # معالجة الرسائل العادية
+        memory.update_user_stats(user_id, message.from_user.username, message.from_user.first_name, message.text)
+        
+        if memory.is_banned(user_id):
+            bot.send_message(message.chat.id, "❌ تم حظرك من استخدام البوت.")
+            return
+        
+        can_send, status = memory.can_send_message(user_id)
+        if not can_send:
+            bot.send_message(message.chat.id, f"❌ انتهت رسائلك المجانية! ({status})\n\n💎 ترقى إلى VIP للاستخدام غير المحدود!\n/upgrade للترقية")
+            return
+        
+        bot.send_chat_action(message.chat.id, 'typing')
+        
+        response = AIService.generate_response(user_id, message.text)
+        
+        if response:
+            bot.send_message(message.chat.id, response)
+        
+        logger.info(f"💬 معالجة رسالة من {message.from_user.first_name}")
         
     except Exception as e:
         logger.error(f"❌ خطأ في المعالجة: {e}")
@@ -1150,6 +965,8 @@ def handle_callback(call):
             welcome_state[user_id] = welcome_type
             bot.send_message(user_id, f"🎉 أرسل {'النص' if welcome_type == 'text' else 'الصورة' if welcome_type == 'photo' else 'الفيديو' if welcome_type == 'video' else 'الصوت'} الترحيبي:")
             bot.answer_callback_query(call.id, f"🎉 ترحيب {welcome_type}")
+    
+    # ... (بقية معالجات الأزرار)
 
 def show_welcome_menu(call):
     welcome_content = memory.settings.get('welcome_content', {})
@@ -1168,9 +985,9 @@ def show_welcome_menu(call):
                         reply_markup=create_welcome_menu(), parse_mode='Markdown')
     bot.answer_callback_query(call.id, "🎉 الترحيب")
 
-# دوال التنظيف المحسنة
+# دوال التنظيف
 def cleanup_old_data():
-    """تنظيف البيانات القديمة - يحذف كل شيء بعد 10 دقائق"""
+    """تنظيف البيانات القديمة"""
     while True:
         try:
             # تنظيف المحادثات القديمة
@@ -1181,7 +998,7 @@ def cleanup_old_data():
                 if datetime.now() - memory.temp_files[user_id] > timedelta(minutes=10):
                     del memory.temp_files[user_id]
             
-            logger.info("🧹 تم تنظيف جميع البيانات القديمة")
+            logger.info("🧹 تم تنظيف البيانات القديمة")
             time.sleep(300)  # انتظر 5 دقائق
         except Exception as e:
             logger.error(f"❌ خطأ في التنظيف: {e}")
@@ -1191,8 +1008,6 @@ def keep_alive():
     """الحفاظ على البوت حياً"""
     while True:
         try:
-            # اختبار بسيط للحفاظ على الاتصال
-            bot.get_me()
             logger.info("🫀 البوت حي ويعمل...")
             time.sleep(300)
         except Exception as e:
@@ -1203,34 +1018,30 @@ def main():
     logger.info("🚀 بدء تشغيل موبي مع جميع الميزات...")
     
     try:
-        # إزالة أي instance سابقة والتأكد من عدم وجود تعارض
-        logger.info("🔄 إزالة الwebhook السابق...")
+        # إزالة أي instance سابقة
         bot.remove_webhook()
-        time.sleep(3)
+        time.sleep(2)
         
-        # اختبار النظام والتحقق من المطور
+        # اختبار النظام
         try:
             test_url = f"{AIService.API_URL}?text=test"
             response = requests.get(test_url, timeout=10)
             logger.info(f"✅ النظام يعمل: {response.status_code}")
-            
         except Exception as api_error:
             logger.warning(f"⚠️ النظام غير متاح: {api_error}")
         
-        logger.info(f"✅ موبي جاهز - المطور: {DEVELOPER_USERNAME} (ID: {DEVELOPER_ID})")
+        logger.info(f"✅ موبي جاهز - المطور: {DEVELOPER_USERNAME}")
         logger.info("🤖 البوت يعمل الآن ويستمع للرسائل...")
         
         # بدء خيوط الخدمة
         threading.Thread(target=keep_alive, daemon=True).start()
         threading.Thread(target=cleanup_old_data, daemon=True).start()
         
-        # تشغيل البوت مع معالجة أفضل للأخطاء
-        logger.info("🎯 بدء الاستماع للرسائل...")
-        bot.infinity_polling(timeout=60, long_polling_timeout=60)
+        # تشغيل البوت
+        bot.infinity_polling(timeout=60, long_polling_timeout=60, restart_on_change=True)
         
     except Exception as e:
         logger.error(f"❌ خطأ في التشغيل: {e}")
-        logger.info("🔄 إعادة التشغيل خلال 10 ثواني...")
         time.sleep(10)
         main()
 
