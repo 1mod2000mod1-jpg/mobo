@@ -3,3 +3,4 @@ requests==2.32.5
 psutil==5.9.5
 watchdog
 psutil
+python-telegram-bot
