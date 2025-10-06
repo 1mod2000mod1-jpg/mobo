@@ -12,7 +12,6 @@ import requests
 import threading
 import time
 import random
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 import telebot
@@ -77,7 +76,6 @@ class Emojis:
     CLOVER = '🍀'
     HOURGLASS = '⏳'
     CHECK = '✅'
-    ID = '🆔'
 
 # 🎯 إعداد التسجيل المتقدم
 logging.basicConfig(
@@ -784,7 +782,6 @@ def main():
         logger.info(f"{Emojis.SUCCESS} البوت متصل: @{bot_info.username}")
         logger.info(f"{Emojis.GLOBE} التشغيل على السحابة: نعم")
         logger.info(f"{Emojis.ROBOT} اسم البوت: {bot_info.first_name}")
-        logger.info(f"{Emojis.ID} ID البوت: {bot_info.id}")
         logger.info(f"{Emojis.CROWN} المطور: {DEVELOPER_USERNAME}")
         
         # بدء الاستماع
@@ -799,107 +796,3 @@ def main():
         
     except Exception as e:
         logger.error(f"{Emojis.ERROR} خطأ في التشغيل: {e}")
-        logger.info(f"{Emojis.LIGHTNING} إعادة المحاولة بعد 10 ثواني...")
-        time.sleep(10)
-        main()
-from flask import Flask
-
-# إنشاء تطبيق Flask بسيط للحفاظ على التشغيل
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return f"""
-    <html>
-        <head>
-            <title>موبي - البوت الذكي</title>
-            <style>
-                body {{ 
-                    font-family: Arial, sans-serif; 
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    text-align: center;
-                    padding: 50px;
-                }}
-                .container {{
-                    max-width: 800px;
-                    margin: 0 auto;
-                    background: rgba(255,255,255,0.1);
-                    padding: 30px;
-                    border-radius: 15px;
-                    backdrop-filter: blur(10px);
-                }}
-                h1 {{ font-size: 2.5em; margin-bottom: 20px; }}
-                .status {{ 
-                    background: rgba(255,255,255,0.2); 
-                    padding: 15px; 
-                    border-radius: 10px; 
-                    margin: 20px 0;
-                    font-size: 1.2em;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🤖 موبي - البوت الذكي</h1>
-                <div class="status">
-                    <p>🚀 <strong>الحالة:</strong> البوت يعمل بنجاح</p>
-                    <p>⏰ <strong>الوقت:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                    <p>👑 <strong>المطور:</strong> {DEVELOPER_USERNAME}</p>
-                </div>
-                <p>📱 البوت نشط ويستقبل الرسائل على Telegram</p>
-                <p>⚡ الإصدار 4.0 - الأكثر تطوراً وسرعة</p>
-            </div>
-        </body>
-    </html>
-    """
-
-@app.route('/health')
-def health():
-    return {"status": "healthy", "bot": "running", "timestamp": datetime.now().isoformat()}
-
-def run_flask():
-    """تشغيل خادم Flask في خلفية منفصلة"""
-    app.run(host='0.0.0.0', port=5000, debug=False)
-
-def main():
-    logger.info(f"{Emojis.ROCKET} بدء تشغيل موبي المتقدم...")
-    
-    try:
-        # تنظيف أي نسخ سابقة
-        try:
-            bot.remove_webhook()
-            time.sleep(3)
-            logger.info(f"{Emojis.SUCCESS} تم تنظيف النسخ السابقة")
-        except:
-            pass
-        
-        # اختبار الاتصال
-        bot_info = bot.get_me()
-        logger.info(f"{Emojis.SUCCESS} البوت متصل: @{bot_info.username}")
-        logger.info(f"{Emojis.GLOBE} التشغيل على السحابة: نعم")
-        logger.info(f"{Emojis.ROBOT} اسم البوت: {bot_info.first_name}")
-        
-        # بدء خادم Flask في الخلفية
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        logger.info(f"{Emojis.SUCCESS} خادم الويب يعمل على المنفذ 5000")
-        
-        # بدء الاستماع للرسائل
-        logger.info(f"{Emojis.SUCCESS} البوت يعمل الآن ويستمع للرسائل...")
-        logger.info(f"{Emojis.PARTY} موبي المتقدم جاهز للعمل!")
-        
-        bot.infinity_polling(
-            timeout=60, 
-            long_polling_timeout=60,
-            logger_level=logging.INFO
-        )
-        
-    except Exception as e:
-        logger.error(f"{Emojis.ERROR} خطأ في التشغيل: {e}")
-        logger.info(f"{Emojis.LIGHTNING} إعادة المحاولة بعد 10 ثواني...")
-        time.sleep(10)
-        main()
-
-if __name__ == "__main__":
-    main()
