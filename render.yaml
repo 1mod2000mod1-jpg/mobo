@@ -8,5 +8,5 @@ services:
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         value: 8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4
-      - key: https://adati-tadil-cod.onrender.com
+      - key: https://your-app-name.onrender.com
         value: 
