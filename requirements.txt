@@ -1,6 +1,5 @@
-flask==2.3.3
-requests==2.31.0
-python-telegram-bot==20.7
-python-dotenv==1.0.0
-gunicorn==21.2.0
-pymongo==4.5.0
+pyTelegramBotAPI==4.19.1
+requests==2.32.3
+psutil==5.9.8
+watchdog==3.0.0
+python-telegram-bot==21.10
