@@ -77,6 +77,7 @@ class Emojis:
     CLOVER = '🍀'
     HOURGLASS = '⏳'
     CHECK = '✅'
+    ID = '🆔'
 
 # 🎯 إعداد التسجيل المتقدم
 logging.basicConfig(
@@ -764,8 +765,6 @@ def create_main_menu():
     keyboard.add(vip_btn, developer_btn)
     
     return keyboard
-
-# ... (استمرار الكود بنفس الجودة والكمال)
 
 # 🚀 تشغيل البوت
 def main():
