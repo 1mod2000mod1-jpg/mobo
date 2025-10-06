@@ -34,7 +34,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # معلومات المطور - تأكد من أن هذا هو رقمك الصحيح!
 DEVELOPER_USERNAME = "@xtt19x"
-DEVELOPER_ID = 6954344202  # ⚠️ غير هذا الرقم إلى رقمك الحقيقي!
+DEVELOPER_ID = 6521966233  # ⚠️ غير هذا الرقم إلى رقمك الحقيقي!
 
 # إعدادات البوت
 BOT_SETTINGS = {
