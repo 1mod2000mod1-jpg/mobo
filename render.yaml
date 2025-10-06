@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: adati tadil cod
+    name: mobi-bot
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
@@ -8,5 +8,3 @@ services:
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         value: 8253064655:AAExNIiYf09aqEsW42A-rTFQDG-P4skucx4
-      - key: https://your-app-name.onrender.com
-        value: 
