@@ -782,6 +782,7 @@ def main():
         logger.info(f"{Emojis.SUCCESS} البوت متصل: @{bot_info.username}")
         logger.info(f"{Emojis.GLOBE} التشغيل على السحابة: نعم")
         logger.info(f"{Emojis.ROBOT} اسم البوت: {bot_info.first_name}")
+        logger.info(f"{Emojis.ID} ID البوت: {bot_info.id}")
         logger.info(f"{Emojis.CROWN} المطور: {DEVELOPER_USERNAME}")
         
         # بدء الاستماع
@@ -796,3 +797,9 @@ def main():
         
     except Exception as e:
         logger.error(f"{Emojis.ERROR} خطأ في التشغيل: {e}")
+        logger.info(f"{Emojis.LIGHTNING} إعادة المحاولة بعد 10 ثواني...")
+        time.sleep(10)
+        main()
+
+if __name__ == "__main__":
+    main()
